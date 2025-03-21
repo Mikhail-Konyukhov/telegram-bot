@@ -13,7 +13,7 @@
 
 - На счету у пользователя не может быть отрицательной суммы. 
 Если пользователь пытается списать больше, чем у него есть, то в ответ получет сообщение об ошибке.
-- 
+
 ## Структура проекта
 Проект состоит из нескольких компонентов:
 
@@ -30,12 +30,12 @@
 
 ```bash
 git clone https://github.com/Mikhail-Konyukhov/telegram-bot/
-cd <папка_с_проектом>
+cd telegram-bot
 ```
 1. В файле config.txt укажите токен своего бота
 TELEGRAM_BOT_TOKEN=your_telegram_bot_token
 
-1. Соберать и запустить контейнеры с помощью Docker Compose:
+1. Собрать и запустить контейнеры с помощью Docker Compose:
 
 ```bash
 docker-compose up --build
@@ -43,8 +43,15 @@ docker-compose up --build
 После запуска контейнеров:
 
 PHP Bot будет доступен по адресу: http://localhost:8081
+
 MySQL будет работать на порту 3306
+
 Adminer будет доступен по адресу: http://localhost:8080
+
+Данные для авторизации в Adminer:
+- Сервер: mysql-db
+- Имя пользователя: user	
+- Пароль: password
 
 ## Настроить вебхук через ngrok
 
