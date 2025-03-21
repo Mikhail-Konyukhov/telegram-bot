@@ -26,49 +26,47 @@
 1. Docker
 1. Docker Compose
 ## Инструкция по локальной установке
-1. Клонируйте проект на вашу машину:
-
-```bash
-git clone https://github.com/Mikhail-Konyukhov/telegram-bot/
-cd telegram-bot
-```
+1. Клонируйте проект на вашу машину: 
+   ```bash
+   git clone https://github.com/Mikhail-Konyukhov/telegram-bot/
+   cd telegram-bot
+   ```
 1. В файле config.txt укажите токен своего бота
-TELEGRAM_BOT_TOKEN=your_telegram_bot_token
+   TELEGRAM_BOT_TOKEN=your_telegram_bot_token
 
 1. Собрать и запустить контейнеры с помощью Docker Compose:
 
-```bash
-docker-compose up --build
-```
-После запуска контейнеров:
-
-PHP Bot будет доступен по адресу: http://localhost:8081
-
-MySQL будет работать на порту 3306
-
-Adminer будет доступен по адресу: http://localhost:8080
-
-Данные для авторизации в Adminer:
-- Сервер: mysql-db
-- Имя пользователя: user	
-- Пароль: password
-
-## Настроить вебхук через ngrok
-
-1. **Установить ngrok**:
-   Скачать ngrok с [официального сайта](https://ngrok.com/download).
-
-2. **Запустите ngrok**:
-   Откройте терминал и запустите ngrok на порту указанном для php-bot в docker-compose.yml:
-
    ```bash
-   ngrok http 8081
+   docker-compose up --build
    ```
-   ngrok выдаст публичный url
+   После запуска контейнеров:
+   
+   PHP Bot будет доступен по адресу: http://localhost:8081
+   
+   MySQL будет работать на порту 3306
+   
+   Adminer будет доступен по адресу: http://localhost:8080
+   
+   Данные для авторизации в Adminer:
+   - Сервер: mysql-db
+   - Имя пользователя: user	
+   - Пароль: password
 
-3. **Настройте вебхук**
-   Используйте команду setWebhook, чтобы настроить вебхук для вашего бота, подставив публичный URL от ngrok:
-
-```bash
-https://api.telegram.org/bot<YOUR_TOKEN>/setWebhook?url=<NGROK_URL>/index.php
-```
+1. Настроить вебхук через ngrok
+   1. **Установить ngrok**:
+      Скачать ngrok с [официального сайта](https://ngrok.com/download).
+   
+   2. **Запустите ngrok**:
+      Откройте терминал и запустите ngrok на порту указанном для php-bot в docker-compose.yml:
+   
+      ```bash
+      ngrok http 8081
+      ```
+      ngrok выдаст публичный url
+   
+   3. **Настройте вебхук**
+      Используйте команду setWebhook, чтобы настроить вебхук для вашего бота, подставив публичный URL от ngrok:
+   
+   ```bash
+   https://api.telegram.org/bot<YOUR_TOKEN>/setWebhook?url=<NGROK_URL>/index.php
+   ```
