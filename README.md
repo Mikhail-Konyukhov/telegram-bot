@@ -43,7 +43,9 @@ docker-compose up --build
 После запуска контейнеров:
 
 PHP Bot будет доступен по адресу: http://localhost:8081
+
 MySQL будет работать на порту 3306
+
 Adminer будет доступен по адресу: http://localhost:8080
 
 ## Настроить вебхук через ngrok
