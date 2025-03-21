@@ -30,6 +30,8 @@
 
 ```bash
 git clone https://github.com/Mikhail-Konyukhov/telegram-bot/
+```
+```bash
 cd <папка_с_проектом>
 ```
 1. В файле config.txt укажите токен своего бота
