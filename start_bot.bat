@@ -1,4 +1,8 @@
 @echo off
+chcp 65001 >nul
+setlocal EnableDelayedExpansion
+
+@echo off
 setlocal
 
 echo ============================================
@@ -20,7 +24,7 @@ timeout /t 5 /nobreak >nul
 echo ============================================
 echo 🌐 Настройка ngrok и Telegram webhook
 echo ============================================
-call setup_webhook.bat
+call set_ngrok_and_webhook.bat
 
 echo ============================================
 echo ✅ Всё готово!
