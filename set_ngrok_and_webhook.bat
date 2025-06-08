@@ -1,8 +1,9 @@
 @echo off
+chcp 65001 >nul
 setlocal EnableDelayedExpansion
 
 REM ======================================================
-REM 1) Читаем TELEGRAM_BOT_TOKEN из config.txt
+REM 1) Р§РёС‚Р°РµРј TELEGRAM_BOT_TOKEN РёР· config.txt
 REM ======================================================
 set "BOT_TOKEN="
 for /f "usebackq tokens=1* delims==" %%A in ("config.txt") do (
@@ -12,10 +13,10 @@ for /f "usebackq tokens=1* delims==" %%A in ("config.txt") do (
 )
 
 if not defined BOT_TOKEN (
-    echo ERROR: TELEGRAM_BOT_TOKEN не найден в config.txt
-    echo Поместите строку вида:
+    echo ERROR: TELEGRAM_BOT_TOKEN РЅРµ РЅР°Р№РґРµРЅ РІ config.txt
+    echo РџРѕРјРµСЃС‚РёС‚Рµ СЃС‚СЂРѕРєСѓ РІРёРґР°:
     echo   TELEGRAM_BOT_TOKEN=123456789:ABCdefGhIJK_lmnopQRstUvWxyZ
-    echo в файл config.txt рядом с этим батником.
+    echo РІ С„Р°Р№Р» config.txt СЂСЏРґРѕРј СЃ СЌС‚РёРј Р±Р°С‚РЅРёРєРѕРј.
     pause
     goto :EOF
 )
@@ -24,17 +25,17 @@ echo ?? Telegram BOT token: %BOT_TOKEN%
 echo.
 
 REM ======================================================
-REM 2) Запускаем ngrok в отдельном окне, пробрасывая порт 8081
+REM 2) Р—Р°РїСѓСЃРєР°РµРј ngrok РІ РѕС‚РґРµР»СЊРЅРѕРј РѕРєРЅРµ, РїСЂРѕР±СЂР°СЃС‹РІР°СЏ РїРѕСЂС‚ 8081
 REM ======================================================
-echo ?? Запускаем ngrok: "ngrok http 8081"
-REM Если ngrok не в PATH, замените "ngrok" на полный путь к ngrok.exe
+echo ?? Р—Р°РїСѓСЃРєР°РµРј ngrok: "ngrok http 8081"
+REM Р•СЃР»Рё ngrok РЅРµ РІ PATH, Р·Р°РјРµРЅРёС‚Рµ "ngrok" РЅР° РїРѕР»РЅС‹Р№ РїСѓС‚СЊ Рє ngrok.exe
 start "Ngrok Tunnel" ngrok http 8081 --log=ngrok.log
-echo Ожидаем, пока ngrok поднимет туннель и отдаст публичный URL...
+echo РћР¶РёРґР°РµРј, РїРѕРєР° ngrok РїРѕРґРЅРёРјРµС‚ С‚СѓРЅРЅРµР»СЊ Рё РѕС‚РґР°СЃС‚ РїСѓР±Р»РёС‡РЅС‹Р№ URL...
 echo.
 
 REM ======================================================
-REM 3) Ждём публичный URL из локального API ngrok (http://127.0.0.1:4040)
-REM    Максимум 30 попыток (30 секунд)
+REM 3) Р–РґС‘Рј РїСѓР±Р»РёС‡РЅС‹Р№ URL РёР· Р»РѕРєР°Р»СЊРЅРѕРіРѕ API ngrok (http://127.0.0.1:4040)
+REM    РњР°РєСЃРёРјСѓРј 30 РїРѕРїС‹С‚РѕРє (30 СЃРµРєСѓРЅРґ)
 REM ======================================================
 set /a COUNTER=0
 set "NGROK_URL="
@@ -48,8 +49,8 @@ set "NGROK_URL="
     )
 
     if !COUNTER! GEQ 30 (
-        echo ERROR: Не удалось получить ngrok URL за 30 секунд.
-        echo Проверьте, что ngrok запущен и доступен http://127.0.0.1:4040
+        echo ERROR: РќРµ СѓРґР°Р»РѕСЃСЊ РїРѕР»СѓС‡РёС‚СЊ ngrok URL Р·Р° 30 СЃРµРєСѓРЅРґ.
+        echo РџСЂРѕРІРµСЂСЊС‚Рµ, С‡С‚Рѕ ngrok Р·Р°РїСѓС‰РµРЅ Рё РґРѕСЃС‚СѓРїРµРЅ http://127.0.0.1:4040
         pause
         goto :EOF
     )
@@ -63,23 +64,44 @@ del ngrok_url.txt 2>nul
 echo ?? Ngrok public URL: !NGROK_URL!
 echo.
 
+REM вЂ¦ РїРѕСЃР»Рµ setlocal EnableDelayedExpansion
+set "CFG_FILE=config.txt"
+
 REM ======================================================
-REM 4) Устанавливаем webhook для Telegram Bot API
+REM 4) РЈСЃС‚Р°РЅР°РІР»РёРІР°РµРј webhook РґР»СЏ Telegram Bot API
 REM ======================================================
-echo ?? Устанавливаем Telegram Webhook: !NGROK_URL!
-curl -s -X POST "https://api.telegram.org/bot%BOT_TOKEN%/setWebhook" -d "url=!NGROK_URL!" > sethook_response.json
-echo Ответ сервера Telegram (setWebhook) сохранен в sethook_response.json
+echo ?? РЈСЃС‚Р°РЅР°РІР»РёРІР°РµРј Telegram Webhook: !NGROK_URL!/
+curl -s -X POST "https://api.telegram.org/bot%BOT_TOKEN%/setWebhook" -d "url=!NGROK_URL!/" > sethook_response.json
+echo РћС‚РІРµС‚ СЃРµСЂРІРµСЂР° Telegram (setWebhook) СЃРѕС…СЂР°РЅРµРЅ РІ sethook_response.json
 type sethook_response.json
 echo.
 
 REM ======================================================
-REM 5) Запрашиваем getWebhookInfo для диагностики
+REM 4Р°) РћР±РЅРѕРІР»СЏРµРј config.txt
 REM ======================================================
-echo Получаем текущее состояние webhook:
-curl -s "https://api.telegram.org/bot%BOT_TOKEN%/getWebhookInfo"
+REM РЈРґР°Р»СЏРµРј СЃС‚Р°СЂС‹Рµ Р·Р°РїРёСЃРё
+findstr /v /b /c:"CLASSIFIER_URL=" /c:"DASHBOARD_URL=" "%CFG_FILE%" > "%CFG_FILE%.tmp"
+move /y "%CFG_FILE%.tmp" "%CFG_FILE%" >nul
+
+echo CLASSIFIER_URL=%NGROK_URL%/classify>> "%CFG_FILE%"
+echo DASHBOARD_URL=%NGROK_URL%/dashboard.php>> "%CFG_FILE%"
+
+echo ? РћР±РЅРѕРІРёР»Рё %CFG_FILE%:
+echo    CLASSIFIER_URL=%NGROK_URL%/classify
+echo    DASHBOARD_URL=%NGROK_URL%/dashboard.php
 echo.
 
-echo ? Всё готово! Бот теперь должен принимать запросы на адрес:
+
+REM ======================================================
+REM 5) Р—Р°РїСЂР°С€РёРІР°РµРј getWebhookInfo РґР»СЏ РґРёР°РіРЅРѕСЃС‚РёРєРё
+REM ======================================================
+
+echo РџРѕР»СѓС‡Р°РµРј С‚РµРєСѓС‰РµРµ СЃРѕСЃС‚РѕСЏРЅРёРµ webhook:
+curl -s "https://api.telegram.org/bot%BOT_TOKEN%/getWebhookInfo"
+
+echo.
+
+echo ? Р’СЃС‘ РіРѕС‚РѕРІРѕ! Р‘РѕС‚ С‚РµРїРµСЂСЊ РґРѕР»Р¶РµРЅ РїСЂРёРЅРёРјР°С‚СЊ Р·Р°РїСЂРѕСЃС‹ РЅР° Р°РґСЂРµСЃ:
 echo    !NGROK_URL!
 echo.
 
