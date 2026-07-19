@@ -1,17 +1,31 @@
 version: '3.8'
-
 services:
+  ## PHP-бот
   php:
+    build: ./php
     container_name: php-bot
-    build: .
+    environment:
+      - CLASSIFIER_URL=http://classify-api:8000/classify
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
     volumes:
-      - .:/var/www/html
+      - ./php:/var/www/html
       - ./data:/var/www/data
     depends_on:
       - mysql
     ports:
       - "8081:80"
 
+  ## FastAPI классификатор
+  python:
+    build: ./python
+    container_name: classify-api
+    volumes:
+      - ~/.cache/huggingface:/root/.cache/huggingface
+      - ./python:/app
+    ports:
+      - "8000:8000"
+
+  ## MySQL
   mysql:
     image: mysql:5.7
     container_name: mysql-db
@@ -21,20 +35,84 @@ services:
       MYSQL_DATABASE: telegram_bot
       MYSQL_USER: user
       MYSQL_PASSWORD: password
-      MYSQL_INITDB_SKIP_TZINFO: 1
-      LANG: en_US.UTF-8
-      MYSQL_CHARSET: utf8mb4
+      MYSQL_INITDB_SKIP_TZINFO: '1'
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
     ports:
       - "3306:3306"
     volumes:
       - mysql_data:/var/lib/mysql
       - ./database:/docker-entrypoint-initdb.d
+
+  ## Adminer
   adminer:
     image: adminer
     container_name: adminer-ui
     restart: always
+    depends_on:
+      - mysql
     ports:
       - "8080:8080"
+
+  ## ngrok
+  ngrok:
+    image: ngrok/ngrok:latest
+    container_name: ngrok
+    depends_on:
+      - php
+    environment:
+      - NGROK_AUTHTOKEN=${NGROK_AUTHTOKEN}
+    command: http php:80 --log-level debug --log-format json
+    ports:
+      - "4040:4040"
+
+  ## init‑скрипт (установка webhook и запись в config.txt)
+  init:
+    image: curlimages/curl:latest
+    container_name: init-script
+    user: root
+    depends_on:
+      - ngrok
+      - php
+    environment:
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+    volumes:
+      - ./php:/var/www/html
+    entrypoint:
+      - sh
+      - -c
+      - |
+        apk add --no-cache jq
+
+        echo ">> Ожидаем HTTPS ngrok URL..."
+        for i in $$(seq 1 30); do
+          URL=$$(curl -s http://ngrok:4040/api/tunnels \
+            | jq -r '.tunnels[] | select(.proto=="https") | .public_url')
+
+          if [ -n "$$URL" ] && [ "$$URL" != "null" ]; then
+            break
+          fi
+          sleep 2
+        done
+
+        if [ -z "$$URL" ] || [ "$$URL" = "null" ]; then
+          echo "ERROR: Не удалось получить HTTPS URL от ngrok"
+          exit 1
+        fi
+
+        echo ">> Получен ngrok URL: $$URL"
+
+        echo ">> Устанавливаем Telegram webhook..."
+        curl -s -X POST \
+          "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/setWebhook" \
+          -d "url=$$URL" > /tmp/sethook.json
+        echo ">> Webhook response: $$(cat /tmp/sethook.json)"
+
+        echo ">> Записываем URL в config.txt..."
+        echo "CLASSIFIER_URL=http://python:8000/classify" > /var/www/html/config.txt
+        echo "DASHBOARD_URL=$$URL/dashboard" >> /var/www/html/config.txt
+        echo "TELEGRAM_BOT_TOKEN=$$TELEGRAM_BOT_TOKEN" >> /var/www/html/config.txt
 
 volumes:
   mysql_data:

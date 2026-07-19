@@ -1,0 +1,11 @@
+TELEGRAM_BOT_TOKEN=your_telegram_bot_token_here
+NGROK_AUTHTOKEN=your_ngrok_auth_token_here
+CLASSIFIER_URL=http://classify-api:8000/classify
+DASHBOARD_URL=https://your-ngrok-url.ngrok-free.app/dashboard
+
+# Опциональный токен для DataLens API (для безопасности)
+# Если не указан, API будет доступен без авторизации
+# Сгенерировать токен: openssl rand -hex 32
+# DATALENS_API_TOKEN=your_random_token_here
+
+

@@ -2,5 +2,6 @@
 <project version="4">
   <component name="Encoding">
     <file url="file://$PROJECT_DIR$/set_ngrok_and_webhook.bat" charset="windows-1251" />
+    <file url="file://$PROJECT_DIR$/start_bot.bat" charset="windows-1251" />
   </component>
 </project>
