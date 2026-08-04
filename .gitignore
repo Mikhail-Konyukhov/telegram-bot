@@ -1,4 +1,31 @@
-config.txt
-ngrok.log
+# --- Секреты и генерируемые конфиги ---
+# .env создаётся start-docker.bat из корневого config.txt
 .env
+# корневой config.txt (шаблон — config.example.txt)
+# и php/config.txt, который init-контейнер перезаписывает на каждом up
 config.txt
+# ngrok.yml содержит authtoken и compose его не использует
+ngrok/ngrok.yml
+
+# --- Логи ---
+*.log
+
+# --- Зависимости (composer install внутри контейнера php) ---
+php/vendor/
+
+# --- Кэш скомпилированных шаблонов Smarty ---
+php/src/App/templates_c/*
+!php/src/App/templates_c/.gitkeep
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+
+# --- IDE ---
+.idea/
+.vscode/
+
+# --- Рабочая память агентов ---
+.claude/
+.cursor/
+CLAUDE.md

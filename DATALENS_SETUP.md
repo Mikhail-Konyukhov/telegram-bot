@@ -12,6 +12,10 @@
 
 Или через ngrok: `https://your-ngrok-url/api.php?endpoint=<название>`
 
+> Форма URL важна: `php-bot` работает на встроенном сервере PHP без rewrite-правил,
+> поэтому обращаться нужно к файлу `api.php` с query-параметром `endpoint`.
+> Путь `/api/datalens` не маршрутизируется.
+
 ### 1. Все расходы
 ```
 GET /api.php?endpoint=expenses
@@ -92,17 +96,30 @@ GET /api.php?endpoint=expenses-vs-limits
 
 ## Настройка безопасности (опционально)
 
+По умолчанию endpoint'ы отдаются без авторизации: если `DATALENS_API_TOKEN` не задан,
+проверка заголовка не выполняется вообще.
+
 ### 1. Генерация API токена
 
-Добавьте в файл `php/config.txt`:
+Сгенерируйте токен:
+```bash
+openssl rand -hex 32
+```
+
+Добавьте его в файл `php/config.txt`:
 ```
 DATALENS_API_TOKEN=ваш_случайный_токен_здесь
 ```
 
-Для генерации токена можно использовать:
-```bash
-openssl rand -hex 32
-```
+> **Ограничение.** `php/config.txt` целиком перезаписывается контейнером `init-script`
+> при каждом `docker compose up` — там остаются только `CLASSIFIER_URL`,
+> `DASHBOARD_URL` и `TELEGRAM_BOT_TOKEN`. Строку с токеном придётся дописывать
+> после каждого запуска:
+> ```bash
+> docker compose exec php sh -c 'echo "DATALENS_API_TOKEN=ваш_токен" >> /var/www/html/config.txt'
+> ```
+> Постоянное решение — добавить запись этой переменной в entrypoint контейнера
+> `init` в `docker-compose.yml`, по аналогии с остальными тремя.
 
 ### 2. Использование токена в DataLens
 
@@ -243,15 +260,17 @@ curl -H "Authorization: Bearer your_token" \
 
 ### Проблема 2: Ошибка 401 Unauthorized
 **Решение**:
-- Проверьте токен в `config.txt`
+- Проверьте токен в `php/config.txt` (не в корневом `config.txt` — это другой файл)
 - Проверьте заголовок Authorization в DataLens
-- Или отключите проверку токена (удалите DATALENS_API_TOKEN из config.txt)
+- Или отключите проверку токена (удалите `DATALENS_API_TOKEN` из `php/config.txt`)
 
 ### Проблема 3: Пустые данные
 **Решение**:
 - Убедитесь, что в БД есть данные (добавьте траты через бота)
 - Проверьте фильтры по датам
 - Проверьте endpoint напрямую через curl
+- Если БД поднималась на чистом томе — проверьте, что схема из
+  `php/database/init.sql` применилась: `docker compose down -v && docker compose up --build`
 
 ### Проблема 4: Ngrok URL изменился
 **Решение**:
@@ -283,11 +302,11 @@ DataLens обновляет данные при каждом запросе к A
 1. Настройте автообновление дашборда (10 сек, 30 сек, 1 мин и т.д.)
 2. Добавьте кнопку "Обновить" на дашборд
 
-## Контакты и поддержка
+## Диагностика
 
 Если возникли проблемы с настройкой, проверьте:
-- Логи контейнера PHP: `docker logs php-bot`
+- Логи контейнера PHP: `docker compose logs -f php`
 - Логи ngrok: http://localhost:4040/inspect/http
-- Статус API: `curl http://localhost:8081/api.php?endpoint=expenses`
+- Статус API: `curl "http://localhost:8081/api.php?endpoint=expenses"`
 
 

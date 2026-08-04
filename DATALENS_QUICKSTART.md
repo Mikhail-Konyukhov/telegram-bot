@@ -4,9 +4,9 @@
 
 ### 1. Убедитесь, что проект запущен
 ```bash
-docker ps
+docker compose ps
 ```
-Должны быть запущены контейнеры: `php-bot`, `mysql-db`, `ngrok`
+Должны быть запущены контейнеры: `php-bot`, `mysql-db`, `classify-api`, `ngrok`
 
 ### 2. Проверьте ngrok URL
 Откройте в браузере: http://localhost:4040
@@ -20,7 +20,7 @@ docker ps
 test-datalens-api.bat
 ```
 
-**Linux/Mac:**
+**Linux/Mac** (нужен `jq`):
 ```bash
 chmod +x test-datalens-api.sh
 ./test-datalens-api.sh
@@ -28,7 +28,7 @@ chmod +x test-datalens-api.sh
 
 **Или вручную:**
 ```bash
-curl http://localhost:8081/api.php?endpoint=expenses
+curl "http://localhost:8081/api.php?endpoint=expenses"
 ```
 
 ### 4. Настройте DataLens (5 минут)
@@ -76,6 +76,10 @@ DATALENS_API_TOKEN=ваш_случайный_токен
 Authorization: Bearer ваш_токен
 ```
 
+> **Внимание:** `php/config.txt` заново генерируется контейнером `init-script`
+> на каждом `docker compose up`, поэтому строку придётся дописывать после каждого
+> запуска. Подробности — в [DATALENS_SETUP.md](DATALENS_SETUP.md#настройка-безопасности-опционально).
+
 ## Полная документация
 
 См. подробную инструкцию: [DATALENS_SETUP.md](DATALENS_SETUP.md)
@@ -84,7 +88,13 @@ Authorization: Bearer ваш_токен
 
 **API возвращает пустой ответ?**
 - Добавьте данные через Telegram бота
-- Проверьте: `docker logs php-bot`
+- Проверьте: `docker compose logs php`
+- Если БД пуста и на чистом томе — убедитесь, что схема применилась:
+  `docker compose down -v && docker compose up --build`
+
+**API отдаёт HTML вместо JSON?**
+- Проверяйте именно `/api.php?endpoint=...`. Rewrite-правил во встроенном сервере
+  PHP нет, путь `/api/datalens` не существует и уходит в `index.php`
 
 **DataLens не подключается?**
 - Используйте HTTPS URL от ngrok
