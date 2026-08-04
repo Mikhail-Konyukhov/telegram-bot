@@ -4,8 +4,9 @@
 # корневой config.txt (шаблон — config.example.txt)
 # и php/config.txt, который init-контейнер перезаписывает на каждом up
 config.txt
-# ngrok.yml содержит authtoken и compose его не использует
-ngrok/ngrok.yml
+# ngrok/ngrok.yml удалён: authtoken идёт через .env, файл compose не использовал.
+# Правило оставлено на случай, если ngrok сгенерирует его заново.
+ngrok/
 
 # --- Логи ---
 *.log
