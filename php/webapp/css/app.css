@@ -571,6 +571,15 @@ select {
   height: 240px;
 }
 
+/* Кнопка выделенной на кольце категории: пока ничего не выбрано — места не занимает. */
+.chart-action {
+  margin-bottom: var(--gap);
+}
+
+.chart-action:empty {
+  display: none;
+}
+
 /* Таблицы и прочий широкий контент скроллятся внутри себя, а не тянут страницу. */
 .scroll-x {
   overflow-x: auto;

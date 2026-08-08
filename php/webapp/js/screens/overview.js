@@ -64,27 +64,55 @@ function globalLimit(limits) {
   ]);
 }
 
+function openCategory(category) {
+  state.categoryFilter = category;
+  location.hash = '#/expenses';
+}
+
 function categoryBreakdown(byCategory, total) {
   const entries = Object.entries(byCategory);
   if (!entries.length) return null;
 
+  const labels = entries.map(([category]) => category);
   const canvas = h('canvas');
-  const chart = h('div', { class: 'card' }, [
+  const card = h('div', { class: 'card' }, [
     h('div', { class: 'chart-box' }, [canvas]),
   ]);
+  const action = h('div', { class: 'chart-action' });
+
+  let chart = null;
+  let selected = null;
+
+  /*
+   * Тап по сектору только выделяет категорию — уходить с экрана можно кнопкой
+   * под графиком. По мелкому сектору легко промахнуться, а возвращаться назад
+   * дороже, чем сделать лишний тап. Повторный тап снимает выделение.
+   */
+  function select(category) {
+    selected = selected === category ? null : category;
+    haptic('selection');
+
+    if (chart) {
+      chart.data.datasets[0].offset = labels.map((label) => (label === selected ? 10 : 0));
+      chart.update();
+    }
+
+    clear(action);
+    if (!selected) return;
+
+    action.append(h('button', {
+      class: 'btn secondary',
+      text: `Показать траты · ${emoji(selected)} ${selected}`,
+      onclick: () => openCategory(selected),
+    }));
+  }
 
   // Chart.js рисует только после вставки канваса в документ.
-  queueMicrotask(() => doughnut(canvas, byCategory, (category) => {
-    state.categoryFilter = category;
-    location.hash = '#/expenses';
-  }));
+  queueMicrotask(() => { chart = doughnut(canvas, byCategory, select); });
 
   const rows = entries.slice(0, 5).map(([category, value]) => h('div', {
     class: 'item',
-    onclick: () => {
-      state.categoryFilter = category;
-      location.hash = '#/expenses';
-    },
+    onclick: () => openCategory(category),
   }, [
     h('span', { class: 'emoji', text: emoji(category) }),
     h('div', { class: 'body' }, [
@@ -98,7 +126,8 @@ function categoryBreakdown(byCategory, total) {
 
   return h('div', {}, [
     h('div', { class: 'section-title', text: 'По категориям' }),
-    chart,
+    card,
+    action,
     h('div', { class: 'list' }, rows),
     entries.length > 5
       ? h('button', {
