@@ -34,10 +34,8 @@ class CategoryHandler
         $msgText = trim($update->getMessage()->getText());
         $chatId = $update->getMessage()->getChat()->getId();
 
-        // Регистрируем пользователя если не существует
-        if (!$this->userModel->exists($chatId)) {
-            $this->userModel->register($chatId);
-        }
+        // Заводим книгу трат, если её ещё нет (в группе владелец — сам чат)
+        $this->userModel->ensure($chatId);
 
         // Парсим команду
         $parts = explode(' ', $msgText, 3);

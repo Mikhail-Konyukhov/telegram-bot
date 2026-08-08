@@ -3,6 +3,7 @@
 namespace App\Controllers\Handlers;
 
 use App\Models\Limit as LimitModel;
+use App\Models\User;
 use TelegramBot\Api\Client;
 use TelegramBot\Api\Types\Update;
 
@@ -13,11 +14,13 @@ class SetLimitHandler
 {
     private Client $tg;
     private LimitModel $limitModel;
+    private User $userModel;
 
     public function __construct(Client $tg)
     {
         $this->tg = $tg;
         $this->limitModel = new LimitModel();
+        $this->userModel = new User();
     }
 
     /**
@@ -32,8 +35,10 @@ class SetLimitHandler
         $chatId = $update->getMessage()->getChat()->getId();
 
         if (preg_match('/^\/setlimit\s+(\S+)\s+([\d.,]+)$/i', $msgText, $m)) {
-            [$cmd, $category, $lim] = $m;
+            [, $category, $lim] = $m;
             $limit = (float)str_replace(',', '.', $lim);
+            // limits ссылается на users.id — в группе владельца ещё может не быть
+            $this->userModel->ensure($chatId);
             $this->limitModel->set($chatId, $category, $limit);
             $this->tg->sendMessage($chatId,
                 "Лимит на категорию «{$category}» установлен: {$limit}"

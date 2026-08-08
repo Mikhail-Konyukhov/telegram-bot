@@ -57,6 +57,24 @@ class User
     }
 
     /**
+     * Гарантирует, что владелец книги трат есть в таблице users.
+     *
+     * Владельцем может быть не только человек: у групповой книги id — это id
+     * самого чата (отрицательный). На `expenses`, `categories` и `limits` висят
+     * внешние ключи на `users.id`, поэтому без этой строки первая же запись
+     * в групповую книгу упала бы.
+     *
+     * @param int $ownerId Telegram ID пользователя или чата
+     * @return void
+     */
+    public function ensure(int $ownerId): void
+    {
+        if (!$this->exists($ownerId)) {
+            $this->register($ownerId);
+        }
+    }
+
+    /**
      * Возвращает токен дашборда для пользователя.
      *
      * @param int $userId

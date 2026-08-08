@@ -58,6 +58,24 @@ class Cfg
         return $this->get('TELEGRAM_BOT_TOKEN');
     }
 
+    /**
+     * Ссылка на direct link Mini App вида `https://t.me/<бот>/<приложение>`.
+     *
+     * Нужна только для групп: кнопки web_app Telegram там не показывает.
+     * Заводится у @BotFather командой /newapp, поэтому значение необязательное —
+     * без него бот в группе просто скажет, что приложение не настроено.
+     */
+    public function getMiniAppLink(): ?string
+    {
+        $link = $this->data['MINIAPP_LINK'] ?? getenv('MINIAPP_LINK');
+
+        if ($link === false || $link === null || $link === '') {
+            return null;
+        }
+
+        return rtrim((string)$link, '/');
+    }
+
     private function get(string $key): string
     {
         $value = $this->data[$key] ?? getenv($key);

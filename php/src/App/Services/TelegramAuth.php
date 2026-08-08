@@ -21,6 +21,25 @@ class TelegramAuth
      */
     public static function userId(string $initData, string $botToken): ?int
     {
+        $data = self::verify($initData, $botToken);
+
+        return $data === null ? null : $data['user_id'];
+    }
+
+    /**
+     * Проверяет подпись initData и возвращает разобранные данные запуска.
+     *
+     * `start_param` — это то, что приехало в `?startapp=` у direct link Mini App.
+     * Значение задаёт клиент, поэтому подпись гарантирует лишь его неизменность
+     * по дороге, но не право на доступ: что за ним стоит, решает вызывающий
+     * (см. {@see LedgerResolver}).
+     *
+     * @param string $initData Сырая query-строка из Telegram.WebApp.initData
+     * @param string $botToken Токен бота
+     * @return array{user_id: int, start_param: string|null}|null null при невалидной подписи
+     */
+    public static function verify(string $initData, string $botToken): ?array
+    {
         parse_str($initData, $params);
 
         $hash = $params['hash'] ?? null;
@@ -60,7 +79,16 @@ class TelegramAuth
         $user = json_decode($params['user'] ?? '', true);
         $id = $user['id'] ?? null;
 
-        return is_int($id) && $id > 0 ? $id : null;
+        if (!is_int($id) || $id <= 0) {
+            return null;
+        }
+
+        $startParam = $params['start_param'] ?? null;
+
+        return [
+            'user_id' => $id,
+            'start_param' => is_string($startParam) && $startParam !== '' ? $startParam : null,
+        ];
     }
 
     /**

@@ -3,6 +3,7 @@
 namespace App\Controllers\Handlers;
 
 use App\Models\Category;
+use App\Models\User;
 use App\Services\ExpenseConfirmation;
 use App\Services\ExpenseIntakeService;
 use GuzzleHttp\Client as HttpClient;
@@ -16,6 +17,7 @@ class ExpenseHandler
 {
     private Client $tg;
     private Category $categoryModel;
+    private User $userModel;
     private ExpenseIntakeService $intake;
     private ExpenseConfirmation $confirmation;
 
@@ -23,6 +25,7 @@ class ExpenseHandler
     {
         $this->tg = $tg;
         $this->categoryModel = new Category();
+        $this->userModel = new User();
         $this->intake = new ExpenseIntakeService($http, $geminiApiKey);
         $this->confirmation = new ExpenseConfirmation();
     }
@@ -44,6 +47,10 @@ class ExpenseHandler
         try {
             $message = $update->getMessage();
             $chatId = $message->getChat()->getId();
+
+            // В группе владелец книги — сам чат, и /start ему никто не отправлял.
+            // Без этой строки первая же трата упала бы на внешнем ключе.
+            $this->userModel->ensure($chatId);
 
             // У пересланного сообщения берём дату оригинала: в учёт должен
             // попасть день покупки, а не день пересылки чека.

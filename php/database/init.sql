@@ -61,6 +61,16 @@ CREATE TABLE IF NOT EXISTS category_hints (
     PRIMARY KEY (user_id, name_norm)
     ) COMMENT='Словарь категорий: личный и общий';
 
+-- Кэш проверок «состоит ли пользователь в чате» для групповых книг трат.
+-- Внешних ключей нет намеренно: chat_id — это чат, а не владелец книги,
+-- и user_id тут человек, который может не иметь своей книги вовсе.
+CREATE TABLE IF NOT EXISTS chat_members (
+                                            chat_id BIGINT NOT NULL COMMENT 'ID группы',
+                                            user_id BIGINT NOT NULL COMMENT 'ID пользователя Telegram',
+    checked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT 'Когда членство подтверждалось',
+    PRIMARY KEY (chat_id, user_id)
+    ) COMMENT='Кэш членства в группах (getChatMember)';
+
 -- Псевдопользователь для системных строк. Нужен именно здесь: на categories.user_id
 -- висит внешний ключ на users.id, и без этой строки сид ниже нарушает его, а
 -- INSERT IGNORE превращает нарушение в warning — категории молча не вставляются,

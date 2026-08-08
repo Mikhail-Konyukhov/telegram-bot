@@ -10,8 +10,10 @@ use App\Models\CategoryHint;
 use App\Models\Limit;
 use App\Services\DashboardService;
 use App\Services\ExpenseIntakeService;
+use App\Services\LedgerResolver;
 use App\Services\TelegramAuth;
 use GuzzleHttp\Client as HttpClient;
+use TelegramBot\Api\Client;
 
 /**
  * API контроллер для работы с тратами
@@ -79,12 +81,15 @@ class ExpenseApiController
     }
 
     /**
-     * Проверяет подпись initData и возвращает id пользователя.
+     * Проверяет подпись initData и возвращает id книги трат.
      *
-     * Незнакомый пользователь регистрируется автоматически — открыть Mini App
-     * можно и не отправляя боту /start.
+     * Книга — это чат: в личке сам пользователь, в группе группа (её id приезжает
+     * в `?startapp=`, право на неё подтверждает {@see LedgerResolver}). Незнакомый
+     * владелец регистрируется автоматически — открыть Mini App можно и не отправляя
+     * боту /start.
      *
-     * @return int|null null, если заголовок отсутствует или подпись невалидна
+     * @return int|null null, если заголовок отсутствует, подпись невалидна
+     *                  или пользователь не состоит в запрошенном чате
      */
     private function authenticate(): ?int
     {
@@ -93,16 +98,23 @@ class ExpenseApiController
             return null;
         }
 
-        $chatId = TelegramAuth::userId($initData, (new Cfg())->getTelegramBotToken());
-        if ($chatId === null) {
+        $botToken = (new Cfg())->getTelegramBotToken();
+
+        $auth = TelegramAuth::verify($initData, $botToken);
+        if ($auth === null) {
             return null;
         }
 
-        if (!$this->userModel->exists($chatId)) {
-            $this->userModel->register($chatId);
+        $ledgerId = (new LedgerResolver(new Client($botToken)))
+            ->resolve($auth['user_id'], $auth['start_param']);
+
+        if ($ledgerId === null) {
+            return null;
         }
 
-        return $chatId;
+        $this->userModel->ensure($ledgerId);
+
+        return $ledgerId;
     }
 
     /**

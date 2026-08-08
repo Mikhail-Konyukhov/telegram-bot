@@ -52,6 +52,8 @@ services:
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - WEBAPP_URL=https://${PUBLIC_DOMAIN}/webapp/
+      # Пусто — приложение работает только в личке (в группах web_app-кнопок нет)
+      - MINIAPP_LINK=${MINIAPP_LINK:-}
       - DB_PASSWORD=${MYSQL_ROOT_PASSWORD}
     volumes:
       - ./data:/var/www/data
