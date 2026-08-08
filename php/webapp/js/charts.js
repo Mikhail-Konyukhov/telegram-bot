@@ -57,6 +57,14 @@ export function doughnut(canvas, byCategory, onSelect) {
 }
 
 /**
+ * Подпись оси X: «08.08.2026» → «08.08», «01.08 - 07.08.2026» → «01.08».
+ * Месяцы («Aug 2026») остаются как есть — под них не подходит ни одно правило.
+ */
+function shortLabel(label) {
+  return String(label).split(' - ')[0].replace(/\.\d{4}$/, '');
+}
+
+/**
  * Столбцы по периодам с накоплением по категориям.
  *
  * @param {HTMLCanvasElement} canvas
@@ -94,7 +102,18 @@ export function stacked(canvas, rows) {
         },
       },
       scales: {
-        x: { stacked: true, grid: { display: false }, ticks: { color: text } },
+        x: {
+          stacked: true,
+          grid: { display: false },
+          ticks: {
+            color: text,
+            autoSkip: true,
+            maxRotation: 0,
+            maxTicksLimit: 7,
+            // На оси «08.08», в подсказке — полная подпись с сервера.
+            callback: (_value, index) => shortLabel(rows[index].label),
+          },
+        },
         y: {
           stacked: true,
           grid: { color: grid },

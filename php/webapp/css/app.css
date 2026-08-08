@@ -135,6 +135,32 @@ select {
   color: var(--accent);
 }
 
+/* ── Шапка с периодом ───────────────────────────────────────────────── */
+
+/*
+ * Липнет к верху: период — контекст всего, что ниже, и он должен быть виден
+ * при скролле. body { overflow-x: hidden } не мешает — overflow body
+ * пробрасывается на вьюпорт, пока у html он visible.
+ */
+.periodbar {
+  position: sticky;
+  top: 0;
+  z-index: 15;
+  background: var(--bg);
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 8px var(--pad) 0;
+}
+
+.periodbar .chips {
+  padding-bottom: 8px;
+}
+
+/* Шапка уже дала отступ сверху — экрану он не нужен (скрытая шапка не в счёт). */
+.periodbar:not([hidden]) + #app {
+  padding-top: 4px;
+}
+
 /* ── Сегмент-контрол периода ────────────────────────────────────────── */
 
 .segmented {

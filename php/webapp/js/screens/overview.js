@@ -2,31 +2,23 @@
 
 import { api } from '../api.js';
 import { h, clear, skeleton, empty, errorBanner, toast } from '../ui.js';
-import { state, setPeriod, refresh } from '../store.js';
+import { state, refresh } from '../store.js';
 import { amount, percent, periodLabel, dayLabel, time } from '../format.js';
 import { emoji, color } from '../categories.js';
 import { doughnut, stacked } from '../charts.js';
 import { haptic } from '../tg.js';
 import { openExpenseEditor } from './expense-form.js';
 
-const PRESETS = [
-  { id: 'today', label: 'Сегодня' },
-  { id: 'week', label: 'Неделя' },
-  { id: 'month', label: 'Месяц' },
-];
+/** Глубина «Динамики»: варианты и дефолт (второй, средний) для каждого шага. */
+const DYNAMICS = {
+  day: { label: 'По дням', unit: 'дн', counts: [7, 14, 30] },
+  week: { label: 'По неделям', unit: 'нед', counts: [4, 8, 12] },
+  month: { label: 'По месяцам', unit: 'мес', counts: [3, 6, 12] },
+};
 
-function periodSwitch() {
-  return h('div', { class: 'segmented' }, PRESETS.map((preset) => h('button', {
-    'aria-pressed': state.preset === preset.id ? 'true' : 'false',
-    text: preset.label,
-    onclick: () => {
-      if (state.preset === preset.id) return;
-      haptic('selection');
-      setPeriod(preset.id);
-      refresh();
-    },
-  })));
-}
+// Выбор переживает перерисовку экрана (сохранение траты, смена периода).
+let dynamicsType = 'month';
+let dynamicsCount = DYNAMICS.month.counts[1];
 
 function hero(data) {
   const previous = Number(data.previous_total) || 0;
@@ -139,49 +131,74 @@ function recentExpenses(items) {
 
 /** Динамика по периодам подгружается отдельно — она не нужна для первого экрана. */
 function dynamics() {
-  const box = h('div', { class: 'card' }, [h('div', { class: 'chart-box' })]);
-  const selector = h('div', { class: 'segmented' }, [
-    ['day', 'По дням'],
-    ['week', 'По неделям'],
-    ['month', 'По месяцам'],
-  ].map(([id, label], index) => h('button', {
-    'aria-pressed': index === 2 ? 'true' : 'false',
-    text: label,
-    onclick: (e) => {
-      selector.querySelectorAll('button').forEach((b) => b.setAttribute('aria-pressed', 'false'));
-      e.currentTarget.setAttribute('aria-pressed', 'true');
-      haptic('selection');
-      load(id);
-    },
-  })));
+  const chart = h('div', { class: 'chart-box' });
+  const steps = h('div', { class: 'segmented' });
+  const counts = h('div', { class: 'chips' });
 
-  async function load(periodType) {
-    const target = box.firstChild;
-    clear(target).append(h('div', { class: 'skeleton' }));
+  // Быстрые переключения обгоняют друг друга: рисуем только последний ответ.
+  let request = 0;
 
-    try {
-      const rows = await api.analytics(periodType, 6);
-      clear(target);
-      const canvas = h('canvas');
-      target.append(canvas);
-      stacked(canvas, rows);
-    } catch (e) {
-      clear(target).append(h('div', { class: 'hint', text: 'Не удалось загрузить динамику' }));
-    }
+  function controls() {
+    clear(steps).append(...Object.entries(DYNAMICS).map(([id, step]) => h('button', {
+      'aria-pressed': id === dynamicsType ? 'true' : 'false',
+      text: step.label,
+      onclick: () => {
+        if (id === dynamicsType) return;
+        dynamicsType = id;
+        dynamicsCount = step.counts[1];
+        haptic('selection');
+        controls();
+        load();
+      },
+    })));
+
+    const step = DYNAMICS[dynamicsType];
+    clear(counts).append(...step.counts.map((count) => h('button', {
+      class: 'chip',
+      'aria-pressed': count === dynamicsCount ? 'true' : 'false',
+      text: `${count} ${step.unit}`,
+      onclick: () => {
+        if (count === dynamicsCount) return;
+        dynamicsCount = count;
+        haptic('selection');
+        controls();
+        load();
+      },
+    })));
   }
 
-  load('month');
+  async function load() {
+    const token = ++request;
+    clear(chart).append(h('div', { class: 'skeleton', style: 'height:100%' }));
+
+    let rows;
+    try {
+      rows = await api.analytics(dynamicsType, dynamicsCount);
+    } catch (e) {
+      if (token === request) clear(chart).append(h('div', { class: 'hint', text: 'Не удалось загрузить динамику' }));
+      return;
+    }
+
+    if (token !== request) return;
+
+    clear(chart);
+    const canvas = h('canvas');
+    chart.append(canvas);
+    stacked(canvas, rows);
+  }
+
+  controls();
+  load();
 
   return h('div', {}, [
     h('div', { class: 'section-title', text: 'Динамика' }),
-    selector,
-    box,
+    steps,
+    counts,
+    h('div', { class: 'card' }, [chart]),
   ]);
 }
 
 async function render(root) {
-  root.append(periodSwitch());
-
   const body = h('div', {}, [skeleton(3)]);
   root.append(body);
 

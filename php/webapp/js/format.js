@@ -54,7 +54,7 @@ export function periodLabel(start, end) {
 /**
  * Границы преднастроенных периодов.
  *
- * @param {'today'|'week'|'month'} preset
+ * @param {'today'|'week'|'month'|'year'} preset
  * @returns {{start: string, end: string}}
  */
 export function presetRange(preset) {
@@ -65,6 +65,9 @@ export function presetRange(preset) {
     // start уже сегодня
   } else if (preset === 'week') {
     start.setDate(end.getDate() - 6);
+  } else if (preset === 'year') {
+    start.setFullYear(end.getFullYear() - 1);
+    start.setDate(start.getDate() + 1);
   } else {
     start.setMonth(end.getMonth() - 1);
     start.setDate(start.getDate() + 1);

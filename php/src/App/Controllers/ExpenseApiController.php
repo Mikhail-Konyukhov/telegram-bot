@@ -393,8 +393,9 @@ class ExpenseApiController
     {
         $periodType = $_GET['period_type'] ?? 'month';
         // Клэмп: каждый период — отдельная выборка из БД, неограниченное
-        // periods_count превращает один запрос в сотни.
-        $periodsCount = max(2, min((int)($_GET['periods_count'] ?? 12), 24));
+        // periods_count превращает один запрос в сотни. Верх — 31, чтобы
+        // пролезал вариант «30 дней» из Mini App.
+        $periodsCount = max(2, min((int)($_GET['periods_count'] ?? 12), 31));
 
         $categoriesData = $this->dashboardService->getCategoriesComparativeData($chatId, $periodType, $periodsCount);
         $result = array_map(function($item) {
