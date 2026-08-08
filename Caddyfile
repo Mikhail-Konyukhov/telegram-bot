@@ -1,0 +1,15 @@
+# Домен подставляется из переменной окружения контейнера (см. docker-compose.prod.yml).
+# Сертификат Let's Encrypt Caddy выпускает и продлевает сам, редирект 80→443 тоже
+# его работа — настраивать нечего.
+{$PUBLIC_DOMAIN} {
+	encode gzip
+
+	# Апстрим видит адрес Caddy, а не клиента; реальный IP приезжает заголовками
+	# X-Forwarded-For / X-Forwarded-Proto, которые reverse_proxy проставляет сам.
+	reverse_proxy php:80
+
+	log {
+		output stdout
+		format console
+	}
+}

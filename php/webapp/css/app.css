@@ -1,0 +1,558 @@
+/*
+ * Тема берётся из переменных --tg-theme-*, которые Telegram подставляет в
+ * :root сам и обновляет при смене темы. Второе значение в var() — фолбэк для
+ * запуска в обычном браузере.
+ */
+:root {
+  --bg: var(--tg-theme-secondary-bg-color, #f2f2f7);
+  --card: var(--tg-theme-section-bg-color, var(--tg-theme-bg-color, #ffffff));
+  --text: var(--tg-theme-text-color, #000000);
+  --hint: var(--tg-theme-hint-color, #8e8e93);
+  --accent: var(--tg-theme-button-color, #2481cc);
+  --accent-text: var(--tg-theme-button-text-color, #ffffff);
+  --danger: var(--tg-theme-destructive-text-color, #eb5757);
+  --separator: var(--tg-theme-section-separator-color, rgba(128, 128, 128, 0.22));
+
+  --ok: #34c759;
+  --warn: #ff9f0a;
+
+  --radius: 14px;
+  --gap: 12px;
+  --pad: 16px;
+  --tabbar-h: 54px;
+
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 16px;
+  line-height: 1.4;
+  color: var(--text);
+  background: var(--bg);
+  overflow-x: hidden;
+}
+
+button,
+input,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+.num {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Каркас ─────────────────────────────────────────────────────────── */
+
+#app {
+  padding: var(--pad) var(--pad) calc(var(--tabbar-h) + var(--safe-bottom) + 24px);
+  max-width: 640px;
+  margin: 0 auto;
+}
+
+.screen-title {
+  font-size: 20px;
+  font-weight: 700;
+  margin: 4px 0 var(--gap);
+}
+
+.section-title {
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--hint);
+  margin: 20px 4px 8px;
+}
+
+.card {
+  background: var(--card);
+  border-radius: var(--radius);
+  padding: var(--pad);
+  margin-bottom: var(--gap);
+}
+
+.card.tight {
+  padding: 4px var(--pad);
+}
+
+.row-between {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.hint {
+  color: var(--hint);
+  font-size: 14px;
+}
+
+/* ── Таб-бар ────────────────────────────────────────────────────────── */
+
+.tabbar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 20;
+  display: flex;
+  background: var(--card);
+  border-top: 1px solid var(--separator);
+  padding-bottom: var(--safe-bottom);
+}
+
+.tabbar button {
+  flex: 1;
+  border: 0;
+  background: none;
+  padding: 6px 0 4px;
+  height: var(--tabbar-h);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  font-size: 11px;
+  color: var(--hint);
+  cursor: pointer;
+}
+
+.tabbar button .icon {
+  font-size: 20px;
+  line-height: 1;
+}
+
+.tabbar button[aria-current='true'] {
+  color: var(--accent);
+}
+
+/* ── Сегмент-контрол периода ────────────────────────────────────────── */
+
+.segmented {
+  display: flex;
+  gap: 4px;
+  background: var(--card);
+  border-radius: 10px;
+  padding: 4px;
+  margin-bottom: var(--gap);
+}
+
+.segmented button {
+  flex: 1;
+  border: 0;
+  border-radius: 8px;
+  padding: 8px 4px;
+  min-height: 36px;
+  background: none;
+  color: var(--hint);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.segmented button[aria-pressed='true'] {
+  background: var(--accent);
+  color: var(--accent-text);
+  font-weight: 600;
+}
+
+/* ── Герой-сумма ────────────────────────────────────────────────────── */
+
+.hero {
+  text-align: center;
+  padding: 22px var(--pad);
+}
+
+.hero .total {
+  font-size: 34px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.hero .delta {
+  font-size: 14px;
+  margin-top: 4px;
+  color: var(--hint);
+}
+
+.hero .delta.up {
+  color: var(--danger);
+}
+
+.hero .delta.down {
+  color: var(--ok);
+}
+
+/* ── Прогресс лимита ────────────────────────────────────────────────── */
+
+.progress {
+  height: 8px;
+  border-radius: 4px;
+  background: var(--separator);
+  overflow: hidden;
+  margin: 8px 0 6px;
+}
+
+.progress i {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
+  background: var(--ok);
+  transition: width 0.3s ease;
+}
+
+.progress.warn i {
+  background: var(--warn);
+}
+
+.progress.over i {
+  background: var(--danger);
+}
+
+/* Кольцо общего лимита — чистый CSS, без svg и библиотек. */
+.ring {
+  --share: 0;
+  --ring-color: var(--ok);
+  width: 132px;
+  height: 132px;
+  margin: 0 auto 12px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background:
+    radial-gradient(farthest-side, var(--card) 79%, transparent 80%),
+    conic-gradient(var(--ring-color) calc(var(--share) * 1%), var(--separator) 0);
+}
+
+.ring .share {
+  font-size: 26px;
+  font-weight: 700;
+}
+
+/* ── Строки списка ──────────────────────────────────────────────────── */
+
+.list {
+  background: var(--card);
+  border-radius: var(--radius);
+  overflow: hidden;
+  margin-bottom: var(--gap);
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px var(--pad);
+  min-height: 52px;
+  border-bottom: 1px solid var(--separator);
+  background: var(--card);
+  cursor: pointer;
+}
+
+.item:last-child {
+  border-bottom: 0;
+}
+
+.item .emoji {
+  font-size: 22px;
+  width: 28px;
+  text-align: center;
+  flex: none;
+}
+
+.item .body {
+  flex: 1;
+  min-width: 0;
+}
+
+.item .title {
+  font-size: 16px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.item .sub {
+  font-size: 13px;
+  color: var(--hint);
+}
+
+.item .value {
+  font-weight: 600;
+  flex: none;
+}
+
+.day-header {
+  display: flex;
+  justify-content: space-between;
+  padding: 10px 4px 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--hint);
+}
+
+/* Свайп по строке: контент едет, под ним открывается действие. */
+.swipe {
+  position: relative;
+  overflow: hidden;
+}
+
+.swipe .actions {
+  position: absolute;
+  inset: 0 0 0 auto;
+  display: flex;
+  align-items: stretch;
+}
+
+.swipe .actions button {
+  border: 0;
+  width: 84px;
+  background: var(--danger);
+  color: #fff;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.swipe .item {
+  position: relative;
+  transition: transform 0.2s ease;
+}
+
+/* ── Чипы ───────────────────────────────────────────────────────────── */
+
+.chips {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 2px 0 10px;
+  scrollbar-width: none;
+}
+
+.chips::-webkit-scrollbar {
+  display: none;
+}
+
+.chip {
+  flex: none;
+  border: 0;
+  border-radius: 16px;
+  padding: 7px 13px;
+  min-height: 34px;
+  background: var(--card);
+  color: var(--text);
+  font-size: 14px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.chip[aria-pressed='true'] {
+  background: var(--accent);
+  color: var(--accent-text);
+}
+
+.chip .chip-hint {
+  color: var(--hint);
+  margin-left: 4px;
+  font-size: 13px;
+}
+
+.chip[aria-pressed='true'] .chip-hint {
+  color: inherit;
+  opacity: 0.75;
+}
+
+/* ── Кнопки и поля ──────────────────────────────────────────────────── */
+
+.btn {
+  border: 0;
+  border-radius: 10px;
+  padding: 12px 16px;
+  min-height: 44px;
+  background: var(--accent);
+  color: var(--accent-text);
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  width: 100%;
+}
+
+.btn.secondary {
+  background: var(--card);
+  color: var(--accent);
+}
+
+.btn.danger {
+  background: none;
+  color: var(--danger);
+}
+
+.field {
+  width: 100%;
+  border: 0;
+  border-radius: 10px;
+  padding: 12px 14px;
+  min-height: 44px;
+  background: var(--card);
+  margin-bottom: 8px;
+}
+
+.field:focus {
+  outline: 2px solid var(--accent);
+}
+
+.amount-input {
+  width: 100%;
+  border: 0;
+  background: none;
+  text-align: center;
+  font-size: 40px;
+  font-weight: 700;
+  padding: 8px 0;
+}
+
+.amount-input:focus {
+  outline: none;
+}
+
+/* ── Шит ────────────────────────────────────────────────────────────── */
+
+.sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: flex-end;
+}
+
+.sheet {
+  width: 100%;
+  max-height: 88vh;
+  overflow-y: auto;
+  background: var(--bg);
+  border-radius: 16px 16px 0 0;
+  padding: 8px var(--pad) calc(var(--pad) + var(--safe-bottom));
+  animation: sheet-up 0.22s ease;
+}
+
+@keyframes sheet-up {
+  from {
+    transform: translateY(100%);
+  }
+}
+
+.sheet .grabber {
+  width: 36px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--separator);
+  margin: 6px auto 12px;
+}
+
+.sheet h3 {
+  margin: 0 0 12px;
+  font-size: 17px;
+}
+
+/* ── Тосты ──────────────────────────────────────────────────────────── */
+
+.toasts {
+  position: fixed;
+  left: 12px;
+  right: 12px;
+  bottom: calc(var(--tabbar-h) + var(--safe-bottom) + 12px);
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.toast {
+  background: var(--card);
+  border-radius: 10px;
+  padding: 12px 14px;
+  font-size: 14px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
+  animation: toast-in 0.2s ease;
+}
+
+.toast.error {
+  color: var(--danger);
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+/* ── Скелетоны, пустые состояния, ошибки ────────────────────────────── */
+
+.skeleton {
+  border-radius: var(--radius);
+  background: var(--card);
+  height: 76px;
+  margin-bottom: var(--gap);
+  opacity: 0.6;
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  50% {
+    opacity: 0.3;
+  }
+}
+
+.empty {
+  text-align: center;
+  padding: 44px 20px;
+  color: var(--hint);
+}
+
+.empty .emoji {
+  font-size: 40px;
+  display: block;
+  margin-bottom: 10px;
+}
+
+.error-banner {
+  background: var(--card);
+  border-radius: var(--radius);
+  padding: var(--pad);
+  text-align: center;
+  color: var(--danger);
+  margin-bottom: var(--gap);
+}
+
+.error-banner button {
+  margin-top: 10px;
+}
+
+/* ── График ─────────────────────────────────────────────────────────── */
+
+.chart-box {
+  position: relative;
+  height: 240px;
+}
+
+/* Таблицы и прочий широкий контент скроллятся внутри себя, а не тянут страницу. */
+.scroll-x {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+@media (hover: hover) {
+  .item:hover {
+    filter: brightness(0.97);
+  }
+}

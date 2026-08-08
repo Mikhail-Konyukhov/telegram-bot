@@ -167,6 +167,83 @@ class Expense
     }
 
     /**
+     * Возвращает траты пользователя, попавшие в диапазон id.
+     *
+     * Диапазон, а не список id, потому что им адресуется одно подтверждение
+     * в чате: в callback_data Telegram влезает 64 байта, и «от и до» держится
+     * в этом лимите при любом числе позиций. Чужие записи, чьи id оказались
+     * в промежутке, отсекает user_id.
+     *
+     * @param int $userId
+     * @param int $fromId
+     * @param int $toId
+     * @return array
+     */
+    public function findRange(int $userId, int $fromId, int $toId): array
+    {
+        $stmt = $this->db->prepare(
+            "SELECT id, name, category, amount, ts
+             FROM expenses
+             WHERE user_id = :user_id AND id BETWEEN :from_id AND :to_id
+             ORDER BY id"
+        );
+        $stmt->execute([
+            'user_id' => $userId,
+            'from_id' => $fromId,
+            'to_id'   => $toId,
+        ]);
+
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    /**
+     * Удаляет траты в диапазоне id — отмена только что добавленного сообщения.
+     *
+     * @param int $userId
+     * @param int $fromId
+     * @param int $toId
+     * @return int Сколько записей удалено
+     */
+    public function deleteRange(int $userId, int $fromId, int $toId): int
+    {
+        $stmt = $this->db->prepare(
+            "DELETE FROM expenses WHERE user_id = :user_id AND id BETWEEN :from_id AND :to_id"
+        );
+        $stmt->execute([
+            'user_id' => $userId,
+            'from_id' => $fromId,
+            'to_id'   => $toId,
+        ]);
+
+        return $stmt->rowCount();
+    }
+
+    /**
+     * Категории, в которые пользователь тратит чаще всего.
+     *
+     * Нужны, чтобы предложить исправление категории в одно нажатие: траты
+     * концентрируются в двух-трёх категориях, и нужная почти всегда там.
+     *
+     * @param int $userId
+     * @param int $limit
+     * @return string[]
+     */
+    public function getTopCategories(int $userId, int $limit = 4): array
+    {
+        $stmt = $this->db->prepare(
+            "SELECT category
+             FROM expenses
+             WHERE user_id = :user_id AND ts >= DATE_SUB(NOW(), INTERVAL 90 DAY)
+             GROUP BY category
+             ORDER BY COUNT(*) DESC
+             LIMIT " . max(1, min($limit, 20))
+        );
+        $stmt->execute(['user_id' => $userId]);
+
+        return $stmt->fetchAll(PDO::FETCH_COLUMN);
+    }
+
+    /**
      * Получает трату по ID с проверкой доступа
      *
      * @param int $id ID траты
@@ -191,136 +268,33 @@ class Expense
     }
 
     /**
-     * Получает все расходы для DataLens с опциональной фильтрацией по датам
+     * Возвращает частые позиции пользователя для подсказок при вводе.
      *
-     * @param string|null $startDate Начальная дата (Y-m-d)
-     * @param string|null $endDate Конечная дата (Y-m-d)
-     * @return array Список расходов
+     * Ранжирование — сумма экспоненциально затухающих весов: недавние покупки
+     * важнее давних, поэтому «раз в неделю последний месяц» опережает
+     * «двадцать раз полгода назад».
+     *
+     * @param int $userId
+     * @param int $limit Сколько позиций вернуть
+     * @return array Список [name, category, uses, avg_amount, last_used]
      */
-    public function getAllForDataLens(?string $startDate = null, ?string $endDate = null): array
+    public function getFrequentNames(int $userId, int $limit = 8): array
     {
-        $sql = "SELECT id, user_id, name, category, amount, ts 
-                FROM expenses 
-                WHERE 1=1";
-        
-        $params = [];
-        
-        if ($startDate !== null) {
-            $sql .= " AND ts >= :start_date";
-            $params['start_date'] = $startDate . ' 00:00:00';
-        }
-        
-        if ($endDate !== null) {
-            $sql .= " AND ts <= :end_date";
-            $params['end_date'] = $endDate . ' 23:59:59';
-        }
-        
-        $sql .= " ORDER BY ts DESC";
-        
-        $stmt = $this->db->prepare($sql);
-        $stmt->execute($params);
-        
-        return $stmt->fetchAll(PDO::FETCH_ASSOC);
-    }
+        $stmt = $this->db->prepare(
+            "SELECT name,
+                    category,
+                    COUNT(*) AS uses,
+                    ROUND(AVG(amount), 2) AS avg_amount,
+                    MAX(ts) AS last_used
+             FROM expenses
+             WHERE user_id = :user_id
+               AND ts >= DATE_SUB(NOW(), INTERVAL 90 DAY)
+             GROUP BY name, category
+             ORDER BY SUM(EXP(-DATEDIFF(NOW(), ts) / 30)) DESC
+             LIMIT " . max(1, min($limit, 50))
+        );
+        $stmt->execute(['user_id' => $userId]);
 
-    /**
-     * Получает агрегированные расходы по категориям
-     *
-     * @param string|null $startDate Начальная дата (Y-m-d)
-     * @param string|null $endDate Конечная дата (Y-m-d)
-     * @param int|null $userId Фильтр по пользователю (опционально)
-     * @return array Список агрегированных данных
-     */
-    public function getAggregatedByCategory(?string $startDate = null, ?string $endDate = null, ?int $userId = null): array
-    {
-        $sql = "SELECT user_id, category, 
-                       SUM(amount) as total_amount, 
-                       COUNT(*) as count
-                FROM expenses 
-                WHERE 1=1";
-        
-        $params = [];
-        
-        if ($startDate !== null) {
-            $sql .= " AND ts >= :start_date";
-            $params['start_date'] = $startDate . ' 00:00:00';
-        }
-        
-        if ($endDate !== null) {
-            $sql .= " AND ts <= :end_date";
-            $params['end_date'] = $endDate . ' 23:59:59';
-        }
-        
-        if ($userId !== null) {
-            $sql .= " AND user_id = :user_id";
-            $params['user_id'] = $userId;
-        }
-        
-        $sql .= " GROUP BY user_id, category 
-                  ORDER BY user_id, total_amount DESC";
-        
-        $stmt = $this->db->prepare($sql);
-        $stmt->execute($params);
-        
-        return $stmt->fetchAll(PDO::FETCH_ASSOC);
-    }
-
-    /**
-     * Получает агрегированные расходы по периодам (день/неделя/месяц)
-     *
-     * @param string $period Тип периода: 'day', 'week', 'month'
-     * @param string|null $startDate Начальная дата (Y-m-d)
-     * @param string|null $endDate Конечная дата (Y-m-d)
-     * @param int|null $userId Фильтр по пользователю (опционально)
-     * @return array Список агрегированных данных по периодам
-     */
-    public function getAggregatedByPeriod(string $period = 'month', ?string $startDate = null, ?string $endDate = null, ?int $userId = null): array
-    {
-        // Определяем формат группировки в зависимости от периода
-        switch ($period) {
-            case 'day':
-                $dateFormat = '%Y-%m-%d';
-                break;
-            case 'week':
-                $dateFormat = '%Y-%u';
-                break;
-            case 'month':
-            default:
-                $dateFormat = '%Y-%m';
-                break;
-        }
-        
-        $sql = "SELECT user_id, 
-                       DATE_FORMAT(ts, '$dateFormat') as period,
-                       category,
-                       SUM(amount) as total_amount, 
-                       COUNT(*) as count
-                FROM expenses 
-                WHERE 1=1";
-        
-        $params = [];
-        
-        if ($startDate !== null) {
-            $sql .= " AND ts >= :start_date";
-            $params['start_date'] = $startDate . ' 00:00:00';
-        }
-        
-        if ($endDate !== null) {
-            $sql .= " AND ts <= :end_date";
-            $params['end_date'] = $endDate . ' 23:59:59';
-        }
-        
-        if ($userId !== null) {
-            $sql .= " AND user_id = :user_id";
-            $params['user_id'] = $userId;
-        }
-        
-        $sql .= " GROUP BY user_id, period, category 
-                  ORDER BY period DESC, user_id, category";
-        
-        $stmt = $this->db->prepare($sql);
-        $stmt->execute($params);
-        
-        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+        return $stmt->fetchAll(\PDO::FETCH_ASSOC);
     }
 }

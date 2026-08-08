@@ -5,7 +5,6 @@ services:
     build: ./php
     container_name: php-bot
     environment:
-      - CLASSIFIER_URL=http://classify-api:8000/classify
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
     volumes:
       - ./php:/var/www/html
@@ -14,16 +13,6 @@ services:
       - mysql
     ports:
       - "8081:80"
-
-  ## FastAPI классификатор
-  python:
-    build: ./python
-    container_name: classify-api
-    volumes:
-      - ~/.cache/huggingface:/root/.cache/huggingface
-      - ./python:/app
-    ports:
-      - "8000:8000"
 
   ## MySQL
   mysql:
@@ -77,6 +66,7 @@ services:
       - php
     environment:
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
     volumes:
       - ./php:/var/www/html
     entrypoint:
@@ -109,10 +99,18 @@ services:
           -d "url=$$URL" > /tmp/sethook.json
         echo ">> Webhook response: $$(cat /tmp/sethook.json)"
 
+        echo ">> Устанавливаем кнопку меню бота..."
+        curl -s -X POST \
+          "https://api.telegram.org/bot$$TELEGRAM_BOT_TOKEN/setChatMenuButton" \
+          -H "Content-Type: application/json" \
+          -d "{\"menu_button\":{\"type\":\"web_app\",\"text\":\"Расходы\",\"web_app\":{\"url\":\"$$URL/webapp/\"}}}" \
+          > /tmp/setmenu.json
+        echo ">> Menu button response: $$(cat /tmp/setmenu.json)"
+
         echo ">> Записываем URL в config.txt..."
-        echo "CLASSIFIER_URL=http://python:8000/classify" > /var/www/html/config.txt
-        echo "DASHBOARD_URL=$$URL/dashboard" >> /var/www/html/config.txt
+        echo "WEBAPP_URL=$$URL/webapp/" > /var/www/html/config.txt
         echo "TELEGRAM_BOT_TOKEN=$$TELEGRAM_BOT_TOKEN" >> /var/www/html/config.txt
+        echo "GEMINI_API_KEY=$$GEMINI_API_KEY" >> /var/www/html/config.txt
 
 volumes:
   mysql_data:

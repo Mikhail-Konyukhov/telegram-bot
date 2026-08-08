@@ -49,6 +49,18 @@ CREATE TABLE IF NOT EXISTS limits (
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     ) COMMENT='Лимиты расходов по категориям';
 
+-- Словарь «название траты → категория»: первые два уровня классификации.
+-- user_id = 0 — общий словарь, из него берутся категории для новых
+-- пользователей, у которых своей истории ещё нет. Внешнего ключа нет
+-- намеренно: 0 не соответствует ни одному реальному пользователю.
+CREATE TABLE IF NOT EXISTS category_hints (
+                                              user_id BIGINT NOT NULL COMMENT 'ID пользователя, 0 — общий словарь',
+                                              name_norm VARCHAR(190) NOT NULL COMMENT 'Нормализованное название (см. NameNormalizer)',
+    category VARCHAR(100) NOT NULL COMMENT 'Категория, победившая последней',
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT 'Когда подсказка обновлялась',
+    PRIMARY KEY (user_id, name_norm)
+    ) COMMENT='Словарь категорий: личный и общий';
+
 -- Добавляем системные категории по умолчанию для всех пользователей (user_id = 0 - системные)
 INSERT IGNORE INTO categories (user_id, name, is_default) VALUES
 (0, 'еда', TRUE),

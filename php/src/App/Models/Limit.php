@@ -92,6 +92,26 @@ class Limit
     }
 
     /**
+     * Удаляет лимит по категории.
+     *
+     * @param int $userId
+     * @param string $category
+     * @return bool true, если лимит существовал и был удалён
+     */
+    public function delete(int $userId, string $category): bool
+    {
+        $stmt = $this->db->prepare(
+            "DELETE FROM limits WHERE user_id = :user_id AND category = :category"
+        );
+        $stmt->execute([
+            'user_id'  => $userId,
+            'category' => $category,
+        ]);
+
+        return $stmt->rowCount() > 0;
+    }
+
+    /**
      * Устанавливает общий лимит на все категории.
      *
      * @param int $userId
@@ -112,32 +132,5 @@ class Limit
     public function getGlobal(int $userId): ?float
     {
         return $this->get($userId, self::GLOBAL_CATEGORY);
-    }
-
-    /**
-     * Получает все лимиты для DataLens с опциональной фильтрацией по пользователю
-     *
-     * @param int|null $userId Фильтр по пользователю (опционально)
-     * @return array Список лимитов
-     */
-    public function getAllForDataLens(?int $userId = null): array
-    {
-        $sql = "SELECT user_id, category, `limit`, updated_at 
-                FROM limits 
-                WHERE 1=1";
-        
-        $params = [];
-        
-        if ($userId !== null) {
-            $sql .= " AND user_id = :user_id";
-            $params['user_id'] = $userId;
-        }
-        
-        $sql .= " ORDER BY user_id, category";
-        
-        $stmt = $this->db->prepare($sql);
-        $stmt->execute($params);
-        
-        return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 }

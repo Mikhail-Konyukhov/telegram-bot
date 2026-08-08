@@ -1,13 +1,10 @@
-# Используем образ с PHP
-FROM php:7.4-cli AS php
+# PHP 8.2: 7.4 снят с поддержки, и composer.lock резолвится под 8.2 (см. config.platform)
+FROM php:8.2-cli AS php
 
 # Зависимости
 RUN apt-get update \
     && apt-get install -y libzip-dev unzip git \
     && docker-php-ext-install zip pdo pdo_mysql
-
-# Устанавливаем PDO и MySQL драйвер
-RUN docker-php-ext-install pdo pdo_mysql
 
 # Указываем рабочую директорию
 WORKDIR /var/www/html

@@ -1,0 +1,144 @@
+# Прод-версия: постоянный домен вместо ngrok, TLS через Caddy, ничего лишнего наружу.
+#
+#   docker compose -f docker-compose.prod.yml up -d --build
+#
+# Отдельный файл, а не override к docker-compose.yml: override умеет добавлять и
+# менять сервисы, но не удалять, а здесь `ngrok` должен исчезнуть целиком.
+#
+# Требует `.env` рядом (см. .env.prod.example). Рассчитан на 1 GB RAM
+# (VM.Standard.E2.1.Micro) — отсюда зажатый MySQL и лимиты на логи.
+
+# Логи Docker по умолчанию растут без ограничений и незаметно съедают диск.
+x-logging: &logging
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+
+services:
+  ## Caddy — единственный сервис с портами наружу. Сам получает и продлевает
+  ## сертификат Let's Encrypt по HTTP-01, поэтому порт 80 нужен даже при работе
+  ## только по 443.
+  caddy:
+    image: caddy:2-alpine
+    container_name: caddy
+    restart: unless-stopped
+    <<: *logging
+    environment:
+      - PUBLIC_DOMAIN=${PUBLIC_DOMAIN}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data       # сертификаты; без тома LE упрётся в rate limit
+      - caddy_config:/config
+    depends_on:
+      - php
+
+  ## PHP-бот. Без ports: снаружи он доступен только через Caddy.
+  ##
+  ## Код едет внутри образа, bind mount'а ./php здесь намеренно нет: он перекрыл бы
+  ## /var/www/html вместе с vendor/, установленным на этапе сборки. Обновление —
+  ## git pull && up -d --build.
+  php:
+    build: ./php
+    container_name: php-bot
+    restart: unless-stopped
+    <<: *logging
+    environment:
+      # config.txt в проде не создаётся — Cfg читает эти переменные напрямую
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - WEBAPP_URL=https://${PUBLIC_DOMAIN}/webapp/
+      - DB_PASSWORD=${MYSQL_ROOT_PASSWORD}
+    volumes:
+      - ./data:/var/www/data
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  ## MySQL. Образ x86-only, что на E2.1.Micro (AMD) нормально; на Ampere A1
+  ## пришлось бы брать mysql:8.0-oracle или mariadb:11.
+  mysql:
+    image: mysql:5.7
+    container_name: mysql-db
+    restart: unless-stopped
+    <<: *logging
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: telegram_bot
+      MYSQL_INITDB_SKIP_TZINFO: '1'
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      # На 1 GB дефолты MySQL не помещаются. performance_schema — самый жирный
+      # кусок: он один держит несколько сотен мегабайт и здесь не нужен.
+      - --performance-schema=OFF
+      - --innodb-buffer-pool-size=128M
+      - --max-connections=30
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./php/database:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      # php падает с фатальной ошибкой, если MySQL ещё не принимает соединения,
+      # а на 1 GB первый старт долгий — поэтому ждём готовности, а не порта.
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-p${MYSQL_ROOT_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 60s
+
+  ## Adminer на localhost инстанса: наружу не смотрит, доступ через SSH-туннель
+  ##   ssh -i ~/.ssh/oracle-money-bot.key -L 8080:localhost:8080 ubuntu@<ip>
+  adminer:
+    image: adminer
+    container_name: adminer-ui
+    restart: unless-stopped
+    <<: *logging
+    depends_on:
+      - mysql
+    ports:
+      - "127.0.0.1:8080:8080"
+
+  ## Разовая настройка бота: webhook и кнопка меню на постоянный домен.
+  ## Отрабатывает и выходит; restart: "no", чтобы не дёргать Telegram на каждом ребуте.
+  init:
+    image: curlimages/curl:latest
+    container_name: init-script
+    restart: "no"
+    <<: *logging
+    depends_on:
+      - caddy
+    environment:
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - PUBLIC_DOMAIN=${PUBLIC_DOMAIN}
+    entrypoint:
+      - sh
+      - -c
+      - |
+        set -e
+        URL="https://$$PUBLIC_DOMAIN"
+
+        echo ">> Ждём, пока Caddy выпустит сертификат на $$URL ..."
+        for i in $$(seq 1 60); do
+          if curl -sf -o /dev/null "$$URL/webapp/"; then break; fi
+          sleep 5
+        done
+
+        echo ">> setWebhook -> $$URL"
+        curl -sS -X POST "https://api.telegram.org/bot$$TELEGRAM_BOT_TOKEN/setWebhook" \
+          -d "url=$$URL"
+        echo
+
+        echo ">> setChatMenuButton -> $$URL/webapp/"
+        curl -sS -X POST "https://api.telegram.org/bot$$TELEGRAM_BOT_TOKEN/setChatMenuButton" \
+          -H "Content-Type: application/json" \
+          -d "{\"menu_button\":{\"type\":\"web_app\",\"text\":\"Расходы\",\"web_app\":{\"url\":\"$$URL/webapp/\"}}}"
+        echo
+
+volumes:
+  mysql_data:
+  caddy_data:
+  caddy_config:

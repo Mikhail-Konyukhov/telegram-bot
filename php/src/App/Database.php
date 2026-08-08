@@ -26,10 +26,12 @@ class Database {
      * Устанавливает соединение с базой данных.
      */
     private function __construct() {
-        $host = 'mysql';
-        $dbname = 'telegram_bot';
-        $username = 'root';
-        $password = 'root';
+        // Дефолты — под локальный docker-compose. В проде пароль root приходит
+        // из .env, поэтому захардкоженный 'root' на публичной машине не остаётся.
+        $host = getenv('DB_HOST') ?: 'mysql';
+        $dbname = getenv('DB_NAME') ?: 'telegram_bot';
+        $username = getenv('DB_USER') ?: 'root';
+        $password = getenv('DB_PASSWORD') ?: 'root';
 
         try {
             $this->connection = new PDO(
