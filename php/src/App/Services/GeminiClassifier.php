@@ -14,11 +14,18 @@ use GuzzleHttp\Client as HttpClient;
 class GeminiClassifier
 {
     /**
-     * Flash-Lite — самая дешёвая и быстрая модель линейки, для разметки
-     * коротких строк по готовому списку категорий её хватает с запасом.
-     * Смена модели — правка этой строки; список ID: ai.google.dev/gemini-api/docs/models
+     * Flash-Lite — самая дешёвая и быстрая модель линейки, для разметки коротких
+     * строк по готовому списку категорий её хватает с запасом.
+     *
+     * Взят плавающий алиас, а не конкретная версия: Google снимает старые модели
+     * с обслуживания для новых ключей, и закреплённая версия однажды начинает
+     * отвечать 404 («no longer available to new users») — на 2.5-flash-lite это
+     * уже случилось. Ответ ограничен responseSchema с enum по категориям
+     * пользователя, поэтому смена модели под алиасом формат не ломает.
+     *
+     * Список ID: ai.google.dev/gemini-api/docs/models
      */
-    private const ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent';
+    private const ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent';
 
     private HttpClient $http;
     private string $apiKey;
