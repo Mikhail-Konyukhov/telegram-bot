@@ -61,6 +61,12 @@ CREATE TABLE IF NOT EXISTS category_hints (
     PRIMARY KEY (user_id, name_norm)
     ) COMMENT='Словарь категорий: личный и общий';
 
+-- Псевдопользователь для системных строк. Нужен именно здесь: на categories.user_id
+-- висит внешний ключ на users.id, и без этой строки сид ниже нарушает его, а
+-- INSERT IGNORE превращает нарушение в warning — категории молча не вставляются,
+-- getUserCategories() возвращает пустой список и бот перестаёт раскладывать траты.
+INSERT IGNORE INTO users (id) VALUES (0);
+
 -- Добавляем системные категории по умолчанию для всех пользователей (user_id = 0 - системные)
 INSERT IGNORE INTO categories (user_id, name, is_default) VALUES
 (0, 'еда', TRUE),
