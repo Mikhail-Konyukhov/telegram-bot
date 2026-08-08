@@ -3,8 +3,10 @@
 -- init.sql применяется только на пустом томе mysql_data, поэтому на живой базе
 -- эту миграцию нужно прогнать руками:
 --
---   docker compose exec -T mysql mysql -uroot -proot telegram_bot < php/database/migrations/001_category_hints.sql
+--   docker compose exec -T mysql mysql --default-character-set=utf8mb4 -uroot -proot telegram_bot < php/database/migrations/001_category_hints.sql
 --
+-- `--default-character-set=utf8mb4` обязателен: клиент mysql 5.7 по умолчанию
+-- работает в latin1 и молча кладёт кириллицу в utf8mb4-колонку дважды закодированной.
 -- Повторный запуск упадёт на CREATE TABLE — она одноразовая.
 
 USE telegram_bot;

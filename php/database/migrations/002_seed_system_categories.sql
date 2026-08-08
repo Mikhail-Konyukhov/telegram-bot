@@ -8,9 +8,12 @@
 -- не возвращает ничего.
 --
 --   docker compose -f docker-compose.prod.yml exec -T mysql \
---     sh -c 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" telegram_bot' \
+--     sh -c 'mysql --default-character-set=utf8mb4 -uroot -p"$MYSQL_ROOT_PASSWORD" telegram_bot' \
 --     < php/database/migrations/002_seed_system_categories.sql
 --
+-- `--default-character-set=utf8mb4` обязателен: клиент mysql 5.7 по умолчанию
+-- работает в latin1 и молча кладёт кириллицу в utf8mb4-колонку дважды
+-- закодированной («еда» вместо d0b5d0b4d0b0 становится C390C2B5...).
 -- Идемпотентна: повторный запуск ничего не изменит.
 
 INSERT IGNORE INTO users (id) VALUES (0);

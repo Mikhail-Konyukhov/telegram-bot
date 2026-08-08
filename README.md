@@ -158,7 +158,7 @@ docker compose down -v && docker compose up --build
 `php/database/migrations/` и накатываются вручную:
 
 ```bash
-docker compose exec -T mysql mysql -uroot -proot telegram_bot \
+docker compose exec -T mysql mysql --default-character-set=utf8mb4 -uroot -proot telegram_bot \
   < php/database/migrations/001_category_hints.sql
 ```
 

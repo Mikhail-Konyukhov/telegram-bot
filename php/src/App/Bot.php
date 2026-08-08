@@ -79,8 +79,6 @@ class Bot
             (new CategoryHandler($this->tg))->handle($update);
             return;
         }
-        
-        error_log($update->toJson(true));
 
         // По умолчанию — ExpenseHandler (обычные сообщения)
         (new ExpenseHandler($this->tg, $this->http, $this->geminiApiKey))->handle($update);
