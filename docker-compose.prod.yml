@@ -55,11 +55,62 @@ services:
       # Пусто — приложение работает только в личке (в группах web_app-кнопок нет)
       - MINIAPP_LINK=${MINIAPP_LINK:-}
       - DB_PASSWORD=${MYSQL_ROOT_PASSWORD}
+      # `php -S` без этой переменной обрабатывает запросы строго по одному.
+      # 4, а не больше: форки делят память копированием при записи, но на 1 GB
+      # каждый лишний воркер отъедает у MySQL и брокера.
+      - PHP_CLI_SERVER_WORKERS=4
+      - RABBITMQ_HOST=rabbitmq
     volumes:
       - ./data:/var/www/data
     depends_on:
       mysql:
         condition: service_healthy
+
+  ## Потребитель очереди трат: тот же образ, другая команда.
+  ## Вебхук только публикует сообщение, разбор и ответ пользователю — здесь.
+  worker:
+    build: ./php
+    container_name: expense-worker
+    restart: unless-stopped
+    <<: *logging
+    command: php bin/worker.php
+    environment:
+      # Только то, что нужно разбору траты: WEBAPP_URL и MINIAPP_LINK читает
+      # AppHandler, а он остался на синхронном пути.
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - DB_PASSWORD=${MYSQL_ROOT_PASSWORD}
+      - RABBITMQ_HOST=rabbitmq
+      # Минимальная пауза между обращениями к Gemini. Ключ один на всех, лимит
+      # у него на ключ — выставить под свой тариф. 0 снимает ограничение.
+      - GEMINI_MIN_INTERVAL_MS=${GEMINI_MIN_INTERVAL_MS:-4000}
+    mem_limit: 96m
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
+
+  ## RabbitMQ. Образ без management-плагина: веб-морда на 1 GB стоит памяти,
+  ## а очередь смотрят раз в жизни — для этого хватит rabbitmqctl list_queues.
+  ## Портов наружу нет, общаются только php и worker по внутренней сети.
+  rabbitmq:
+    image: rabbitmq:3.13-alpine
+    container_name: rabbitmq
+    restart: unless-stopped
+    <<: *logging
+    volumes:
+      - ./rabbitmq.conf:/etc/rabbitmq/conf.d/10-limits.conf:ro
+      - rabbitmq_data:/var/lib/rabbitmq   # без тома очередь теряется при пересоздании
+    mem_limit: 200m
+    healthcheck:
+      # Именно check_port_connectivity, а не ping: ping отвечает, пока брокер
+      # ещё не принимает соединения на 5672, и воркер стартует в отказ.
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_port_connectivity"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
 
   ## MySQL. Образ x86-only, что на E2.1.Micro (AMD) нормально; на Ampere A1
   ## пришлось бы брать mysql:8.0-oracle или mariadb:11.
@@ -144,3 +195,4 @@ volumes:
   mysql_data:
   caddy_data:
   caddy_config:
+  rabbitmq_data:

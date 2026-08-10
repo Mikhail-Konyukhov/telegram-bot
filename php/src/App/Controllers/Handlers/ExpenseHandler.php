@@ -6,6 +6,7 @@ use App\Models\Category;
 use App\Models\User;
 use App\Services\ExpenseConfirmation;
 use App\Services\ExpenseIntakeService;
+use App\Services\GeminiUnavailable;
 use GuzzleHttp\Client as HttpClient;
 use TelegramBot\Api\Client;
 use TelegramBot\Api\Types\Update;
@@ -31,34 +32,44 @@ class ExpenseHandler
     }
 
     /**
-     * Разбирает сообщение, сохраняет траты и отвечает подтверждением.
+     * Достаёт из апдейта то, что нужно обработке, и передаёт в {@see process()}.
      *
-     * Повторные попытки со sleep(30) убраны намеренно: они выполнялись прямо в
-     * обработчике вебхука, Telegram не дожидался ответа и присылал апдейт
-     * заново — трата записывалась дважды. Ретраи вернутся вместе с очередью.
-     *
-     * @param Update $update
-     * @return void
+     * Обычный путь — очередь: {@see \App\Queue\ExpenseQueue} публикует те же три
+     * значения, а `process()` вызывает воркер. Этот метод остаётся для отката на
+     * синхронную обработку, когда брокер недоступен (см. Bot::handleUpdate).
      */
     public function handle(Update $update): void
     {
-        $chatId = null;
+        $message = $update->getMessage();
 
+        $this->process(
+            $message->getChat()->getId(),
+            trim($message->getText()),
+            // У пересланного сообщения берём дату оригинала: в учёт должен
+            // попасть день покупки, а не день пересылки чека.
+            date('Y-m-d H:i:s', $message->getForwardDate() ?? $message->getDate())
+        );
+    }
+
+    /**
+     * Разбирает текст, сохраняет траты и отвечает подтверждением.
+     *
+     * Повторные попытки со sleep(30) убраны намеренно: они выполнялись прямо в
+     * обработчике вебхука, Telegram не дожидался ответа и присылал апдейт
+     * заново — трата записывалась дважды. Теперь ретраями занимается очередь,
+     * поэтому {@see GeminiUnavailable} отсюда выходит наружу, а не глотается:
+     * по ней воркер понимает, что сообщение надо отложить и повторить.
+     */
+    public function process(int $chatId, string $text, string $date): void
+    {
         try {
-            $message = $update->getMessage();
-            $chatId = $message->getChat()->getId();
-
             // В группе владелец книги — сам чат, и /start ему никто не отправлял.
             // Без этой строки первая же трата упала бы на внешнем ключе.
             $this->userModel->ensure($chatId);
 
-            // У пересланного сообщения берём дату оригинала: в учёт должен
-            // попасть день покупки, а не день пересылки чека.
-            $date = date('Y-m-d H:i:s', $message->getForwardDate() ?? $message->getDate());
-
             $parsed = $this->intake->parse(
                 $chatId,
-                trim($message->getText()),
+                $text,
                 $this->categoryModel->getUserCategories($chatId)
             );
 
@@ -78,12 +89,13 @@ class ExpenseHandler
             }
 
             $this->tg->sendMessage($chatId, $view['text'], null, false, null, $view['keyboard']);
+        } catch (GeminiUnavailable $e) {
+            // Единственная ошибка, которую здесь гасить нельзя: на ней держатся
+            // отложенные повторы. Ничего ещё не сохранено — parse() падает до save().
+            throw $e;
         } catch (\Throwable $e) {
             error_log($e->getMessage());
-
-            if ($chatId !== null) {
-                $this->tg->sendMessage($chatId, 'Ошибка: ' . $e->getMessage());
-            }
+            $this->tg->sendMessage($chatId, 'Ошибка: ' . $e->getMessage());
         }
     }
 }

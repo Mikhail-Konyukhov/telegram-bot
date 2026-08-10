@@ -281,11 +281,22 @@ flowchart TB
 
 | компонент | RAM |
 |---|---|
-| PHP 8.2 (встроенный сервер) | ~80 MB |
+| PHP 8.2 (встроенный сервер, 4 воркера) | ~110 MB |
 | MySQL с зажатым `innodb_buffer_pool_size=128M` | ~300 MB |
+| RabbitMQ (alpine, без management-плагина) | ~110 MB |
+| Воркер очереди (PHP CLI) | ~45 MB |
 | Caddy | ~30 MB |
 | Ubuntu | ~200 MB |
-| **итого** | **~600 MB** |
+| **итого** | **~795 MB** |
+
+Запас на 1 GB после появления очереди почти исчерпан, поэтому в
+`docker-compose.prod.yml` стоят `mem_limit` на `rabbitmq` (200m) и `worker` (96m),
+а `rabbitmq.conf` ограничивает брокеру потолок памяти 96 MiB — без этого Erlang
+по умолчанию готов занять 40% RAM хоста и отнять её у MySQL. Признак, что не
+уложились: OOM-killer в `dmesg` и перезапуски `mysql` в `docker compose ps`.
+Лечится либо переносом MySQL на второй бесплатный инстанс, либо отказом от
+брокера в пользу таблицы-очереди — воркер, дедупликация и лимит темпа при этом
+остаются как есть, меняется только источник задач.
 
 То есть **`VM.Standard.E2.1.Micro` (1 GB) подходит**, а его в Always Free дают до двух
 штук и дефицита по нему нет — в отличие от A1, который разбирают. Это же снимает
@@ -521,14 +532,25 @@ ngrok на том же токене невозможна — они будут �
   даже с закрытым портом. В прод-compose он берётся из `.env`; `Database.php` читает
   `DB_HOST`/`DB_NAME`/`DB_USER`/`DB_PASSWORD` из окружения с откатом на локальные
   дефолты, поэтому захардкоженного `root/root` на сервере не остаётся.
-- **`php -S` однопоточный.** Встроенный сервер PHP обрабатывает запросы по одному:
-  пока грузится Mini App, вебхук ждёт. Для одного пользователя не смертельно, но это
-  первое, что стоит поменять (php-fpm + nginx), если бот начнёт «подтормаживать».
-- **Классификация требует исходящего HTTPS наружу.** PHP ходит в
-  `generativelanguage.googleapis.com`. Security List Oracle по умолчанию разрешает
-  весь egress, но если его сузили — незнакомые траты перестанут записываться, а знакомые
-  (те, что уже в `category_hints`) продолжат. Симптом в `logs -f php`:
-  `Gemini request failed: …`.
+- **`php -S` по умолчанию однопоточный.** Встроенный сервер PHP обрабатывает запросы
+  по одному, и пока грузится Mini App, вебхук ждёт. Лечится переменной
+  `PHP_CLI_SERVER_WORKERS=4` — она стоит в обоих compose-файлах. Если и этого перестанет
+  хватать, следующий шаг — php-fpm + nginx.
+- **Классификация требует исходящего HTTPS наружу.** В
+  `generativelanguage.googleapis.com` ходит **воркер**, а не `php`. Security List Oracle
+  по умолчанию разрешает весь egress, но если его сузили — незнакомые траты перестанут
+  записываться, а знакомые (те, что уже в `category_hints`) продолжат. Симптом
+  в `logs -f worker`: `Gemini request failed: …` либо повторяющееся
+  `попытка N не удалась`.
+- **Воркер и брокер — два новых сервиса, которые надо не забыть.** `docker compose ps`
+  должен показывать `expense-worker` и `rabbitmq` наравне с `php-bot`. Если воркер
+  в цикле перезапусков, чаще всего он не может достучаться до MySQL или в `.env` нет
+  `GEMINI_API_KEY` — оба случая видны в `logs worker` первой же строкой. Очередь
+  при этом не теряется: сообщения копятся в `expenses` и разберутся, когда воркер
+  поднимется.
+- **Веб-морды RabbitMQ в проде нет.** Образ взят без management-плагина, он стоит
+  памяти. Посмотреть, что в очередях:
+  `docker compose -f docker-compose.prod.yml exec rabbitmq rabbitmqctl list_queues name messages`.
 - **Бесплатный тир Gemini нельзя использовать для пользователей из ЕЭЗ/UK/Швейцарии** —
   по условиям Google там нужен платный режим. Для пользователей из КР ограничение
   не применяется, но при расширении аудитории это всплывёт.
@@ -541,8 +563,10 @@ ngrok на том же токене невозможна — они будут �
 
 ```bash
 docker compose ps                    # что вообще живо
-docker compose logs -f php           # логи бота и error_log()
+docker compose logs -f php           # вебхук и публикация в очередь
+docker compose logs -f worker        # разбор трат, Gemini, повторные попытки
 docker compose logs -f caddy         # проблемы с сертификатом видно здесь
+docker compose exec rabbitmq rabbitmqctl list_queues name messages   # что в очередях
 docker stats                         # упёрлись ли в память (актуально на 1 GB micro)
 free -h                              # там же смотреть, жив ли своп
 df -h                                # Free Tier даёт 200 GB, но логи Docker растут молча
@@ -556,6 +580,27 @@ git pull && docker compose up -d --build
 
 `-d` — в фоне, `--build` — пересобрать изменившиеся образы. Compose перезапустит только те
 контейнеры, чья конфигурация или образ поменялись.
+
+Если в обновлении есть миграции — накатить их **до** `up`, схема меняется только руками
+(`docker compose -f docker-compose.prod.yml` здесь и далее сокращён до `compose`):
+
+```bash
+for m in 004_expenses_user_ts_index 005_processed_updates; do
+  docker compose exec -T mysql \
+    sh -c 'mysql --default-character-set=utf8mb4 -uroot -p"$MYSQL_ROOT_PASSWORD" telegram_bot' \
+    < php/database/migrations/$m.sql
+done
+```
+
+`--default-character-set=utf8mb4` обязателен: клиент mysql 5.7 по умолчанию работает
+в latin1 и молча кладёт кириллицу дважды закодированной. `004` не идемпотентна —
+повторный запуск упадёт на `Duplicate key name`, это нормально и ничего не ломает.
+
+Заодно, если словарь категорий обновился:
+
+```bash
+docker compose exec php php bin/import-hints.php
+```
 
 Бэкап базы (Free Tier не бэкапит за тебя):
 

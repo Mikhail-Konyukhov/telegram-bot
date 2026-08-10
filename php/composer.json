@@ -5,7 +5,8 @@
         "ext-json": "*",
         "ext-pdo": "*",
         "ext-curl": "*",
-        "guzzlehttp/guzzle": "^7.4"
+        "guzzlehttp/guzzle": "^7.4",
+        "php-amqplib/php-amqplib": "^3.7"
     },
     "autoload": {
         "psr-4": {

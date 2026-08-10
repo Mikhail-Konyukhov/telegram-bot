@@ -24,6 +24,10 @@ CREATE TABLE IF NOT EXISTS expenses (
     category VARCHAR(100) NOT NULL COMMENT 'Категория, определенная классификатором',
     amount DECIMAL(10,2) NOT NULL COMMENT 'Сумма траты (всегда положительное число)',
     ts TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT 'Дата и время записи',
+    -- Все горячие выборки идут по паре «пользователь + диапазон дат»
+    -- (getExpensesForPeriod, getTotalLast30Days). Равенство первым, диапазон
+    -- вторым — тогда индекс закрывает и WHERE, и ORDER BY ts.
+    INDEX idx_expenses_user_ts (user_id, ts),
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     ) COMMENT='История расходов пользователей';
 
@@ -70,6 +74,15 @@ CREATE TABLE IF NOT EXISTS chat_members (
     checked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT 'Когда членство подтверждалось',
     PRIMARY KEY (chat_id, user_id)
     ) COMMENT='Кэш членства в группах (getChatMember)';
+
+-- Дедупликация апдейтов Telegram: обработка трат идёт через очередь, а она
+-- доставляет at-least-once. Без отметки повторная доставка (падение воркера
+-- между записью и подтверждением) записала бы трату дважды. Внешних ключей нет:
+-- строка живёт независимо от того, чей это был чат и сохранилось ли что-нибудь.
+CREATE TABLE IF NOT EXISTS processed_updates (
+    update_id  BIGINT NOT NULL PRIMARY KEY COMMENT 'update_id из апдейта Telegram',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT 'Когда апдейт был обработан'
+    ) COMMENT='Обработанные апдейты: доставка из очереди at-least-once';
 
 -- Псевдопользователь для системных строк. Нужен именно здесь: на categories.user_id
 -- висит внешний ключ на users.id, и без этой строки сид ниже нарушает его, а

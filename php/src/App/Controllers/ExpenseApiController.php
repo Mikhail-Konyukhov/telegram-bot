@@ -509,7 +509,8 @@ class ExpenseApiController
         }
 
         $intake = new ExpenseIntakeService(
-            new HttpClient(['timeout' => 20]),
+            // connect_timeout у Guzzle по умолчанию 0 — без ограничения, см. Bot.php
+            new HttpClient(['timeout' => 20, 'connect_timeout' => 5]),
             (new Cfg())->getGeminiApiKey()
         );
 

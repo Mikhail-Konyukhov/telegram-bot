@@ -3,6 +3,8 @@
 namespace App\Services;
 
 use GuzzleHttp\Client as HttpClient;
+use GuzzleHttp\Exception\BadResponseException;
+use GuzzleHttp\Exception\ConnectException;
 
 /**
  * Классификация трат через Gemini Flash.
@@ -30,10 +32,19 @@ class GeminiClassifier
     private HttpClient $http;
     private string $apiKey;
 
+    /** Минимальный интервал между запросами, микросекунды; 0 — без ограничения */
+    private int $minIntervalUs;
+
+    private float $lastRequestAt = 0.0;
+
     public function __construct(HttpClient $http, string $apiKey)
     {
         $this->http = $http;
         $this->apiKey = $apiKey;
+        // Из окружения, как параметры БД в App\Database: это настройка среды,
+        // а не приложения, и в вебхуке она не нужна вовсе — там объект живёт
+        // один запрос.
+        $this->minIntervalUs = max(0, (int)(getenv('GEMINI_MIN_INTERVAL_MS') ?: 0)) * 1000;
     }
 
     /**
@@ -53,11 +64,28 @@ class GeminiClassifier
             return [];
         }
 
+        $this->throttle();
+
         try {
             $response = $this->http->post(self::ENDPOINT, [
                 'headers' => ['x-goog-api-key' => $this->apiKey],
                 'json' => $this->payload($names, $categories),
             ]);
+        } catch (ConnectException $e) {
+            // Сеть не поднялась или вышел таймаут — само по себе временное.
+            throw new GeminiUnavailable('Gemini недоступен: ' . $e->getMessage(), 0, $e);
+        } catch (BadResponseException $e) {
+            $status = $e->getResponse()->getStatusCode();
+
+            // 429 — упёрлись в лимит ключа, 5xx — сбой на стороне Google: и то,
+            // и другое проходит со второй попытки. Остальное (401/403 — ключ,
+            // 400 — кривой запрос) повторять бессмысленно.
+            if ($status === 429 || $status >= 500) {
+                throw new GeminiUnavailable("Gemini ответил {$status}", 0, $e);
+            }
+
+            error_log('Gemini request failed: ' . $e->getMessage());
+            return [];
         } catch (\Throwable $e) {
             error_log('Gemini request failed: ' . $e->getMessage());
             return [];
@@ -83,6 +111,30 @@ class GeminiClassifier
         }
 
         return $result;
+    }
+
+    /**
+     * Выдерживает паузу между запросами.
+     *
+     * Ключ Gemini один на всех пользователей, и лимит у него на ключ, а не на
+     * пользователя — значит ограничивать темп надо глобально. Приём верен ровно
+     * пока потребитель очереди один: со вторым воркером поля в объекте перестанет
+     * хватать и понадобится общий счётчик.
+     */
+    private function throttle(): void
+    {
+        if ($this->minIntervalUs <= 0 || $this->lastRequestAt === 0.0) {
+            $this->lastRequestAt = microtime(true);
+            return;
+        }
+
+        $elapsedUs = (microtime(true) - $this->lastRequestAt) * 1_000_000;
+
+        if ($elapsedUs < $this->minIntervalUs) {
+            usleep((int)($this->minIntervalUs - $elapsedUs));
+        }
+
+        $this->lastRequestAt = microtime(true);
     }
 
     /**

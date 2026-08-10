@@ -1,0 +1,30 @@
+-- Индекс под выборки трат за период.
+--
+-- На expenses до сих пор были только PRIMARY KEY (id) и неявный индекс под внешним
+-- ключом по user_id. Все «горячие» запросы фильтруют пару user_id + диапазон ts:
+-- Expense::getExpensesForPeriod (плюс ORDER BY ts DESC), getTotalLast30Days,
+-- getMonthlyTotal. С одним лишь индексом по user_id MySQL читает все траты
+-- пользователя целиком и отсеивает по дате уже в памяти — на пятистах записях
+-- незаметно, на десятках тысяч уже нет.
+--
+-- Порядок колонок именно (user_id, ts): равенство первым, диапазон вторым.
+-- Тогда один индекс закрывает и WHERE, и сортировку.
+--
+-- Локально:
+--
+--   docker compose exec -T mysql mysql --default-character-set=utf8mb4 -uroot -proot telegram_bot < php/database/migrations/004_expenses_user_ts_index.sql
+--
+-- На проде:
+--
+--   docker compose -f docker-compose.prod.yml exec -T mysql \
+--     sh -c 'mysql --default-character-set=utf8mb4 -uroot -p"$MYSQL_ROOT_PASSWORD" telegram_bot' \
+--     < php/database/migrations/004_expenses_user_ts_index.sql
+--
+-- `--default-character-set=utf8mb4` обязателен: клиент mysql 5.7 по умолчанию
+-- работает в latin1 и молча кладёт кириллицу в utf8mb4-колонку дважды закодированной.
+--
+-- НЕ идемпотентна: MySQL 5.7 не умеет CREATE INDEX IF NOT EXISTS, повторный запуск
+-- упадёт с «Duplicate key name». Проверить, что индекс уже стоит:
+--   SHOW INDEX FROM expenses WHERE Key_name = 'idx_expenses_user_ts';
+
+CREATE INDEX idx_expenses_user_ts ON expenses (user_id, ts);

@@ -9,6 +9,7 @@ use App\Controllers\Handlers\AppHandler;
 use App\Controllers\Handlers\ExpenseHandler;
 use App\Controllers\Handlers\CategoryHandler;
 use App\Controllers\Handlers\CallbackHandler;
+use App\Queue\ExpenseQueue;
 use GuzzleHttp\Client as HttpClient;
 use TelegramBot\Api\Client;
 use TelegramBot\Api\Types\Update;
@@ -35,7 +36,13 @@ class Bot
         }
 
         $this->tg = new Client($token);
-        $this->http = new HttpClient(['timeout' => $this->httpTimout]);
+        $this->http = new HttpClient([
+            'timeout' => $this->httpTimout,
+            // connect_timeout у Guzzle по умолчанию 0 — без ограничения. Зависший
+            // TCP-connect к Gemini держал бы процесс бесконечно, а в воркере это
+            // означало бы вставшую очередь.
+            'connect_timeout' => 5,
+        ]);
     }
 
     public function handleUpdate(Update $update): void
@@ -80,7 +87,35 @@ class Bot
             return;
         }
 
-        // По умолчанию — ExpenseHandler (обычные сообщения)
-        (new ExpenseHandler($this->tg, $this->http, $this->geminiApiKey))->handle($update);
+        // По умолчанию — трата. В отличие от команд выше, её разбор ходит в
+        // Gemini, поэтому сообщение уезжает в очередь: вебхук должен ответить
+        // Telegram сразу, иначе тот присылает апдейт заново.
+        $this->queueExpense($update, $msgText);
+    }
+
+    /**
+     * Ставит трату в очередь, а при недоступности брокера разбирает на месте.
+     *
+     * Откат на синхронную обработку нужен не для красоты: без него падение
+     * RabbitMQ означало бы молча съеденные траты — пользователь отправил
+     * сообщение, бот ответил Telegram «200» и забыл про него.
+     */
+    private function queueExpense(Update $update, string $text): void
+    {
+        $message = $update->getMessage();
+
+        try {
+            (new ExpenseQueue())->publish([
+                'update_id' => $update->getUpdateId(),
+                'chat_id'   => $message->getChat()->getId(),
+                'text'      => $text,
+                // Дата оригинала пересланного сообщения: в учёт должен попасть
+                // день покупки, а не день пересылки чека.
+                'date'      => date('Y-m-d H:i:s', $message->getForwardDate() ?? $message->getDate()),
+            ]);
+        } catch (\Throwable $e) {
+            error_log('Очередь недоступна, обрабатываю синхронно: ' . $e->getMessage());
+            (new ExpenseHandler($this->tg, $this->http, $this->geminiApiKey))->handle($update);
+        }
     }
 }

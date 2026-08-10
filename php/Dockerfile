@@ -1,10 +1,16 @@
 # PHP 8.2: 7.4 снят с поддержки, и composer.lock резолвится под 8.2 (см. config.platform)
+#
+# pcntl в require composer.json намеренно нет: расширения не существует на Windows,
+# и `composer install` на хосте упал бы на нём. Воркер обходится без него
+# (проверяет function_exists), теряя только корректное завершение по SIGTERM.
 FROM php:8.2-cli AS php
 
 # Зависимости
 RUN apt-get update \
     && apt-get install -y libzip-dev unzip git \
-    && docker-php-ext-install zip pdo pdo_mysql
+    # sockets — обязательная зависимость php-amqplib, в образе её нет;
+    # pcntl — корректное завершение воркера по SIGTERM.
+    && docker-php-ext-install zip pdo pdo_mysql sockets pcntl
 
 # Указываем рабочую директорию
 WORKDIR /var/www/html

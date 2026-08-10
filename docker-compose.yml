@@ -6,6 +6,10 @@ services:
     container_name: php-bot
     environment:
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      # `php -S` без этой переменной обрабатывает запросы строго по одному:
+      # вебхук, ждущий Gemini, задерживал и запросы Mini App к api.php.
+      - PHP_CLI_SERVER_WORKERS=4
+      - RABBITMQ_HOST=rabbitmq
     volumes:
       - ./php:/var/www/html
       - ./data:/var/www/data
@@ -13,6 +17,49 @@ services:
       - mysql
     ports:
       - "8081:80"
+
+  ## Потребитель очереди трат: тот же образ, другая команда.
+  ##
+  ## Пока init не записал config.txt, Cfg падает на отсутствующем GEMINI_API_KEY
+  ## и контейнер перезапускается — это нормально для первых секунд после `up`.
+  worker:
+    build: ./php
+    container_name: expense-worker
+    restart: unless-stopped
+    command: php bin/worker.php
+    environment:
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - RABBITMQ_HOST=rabbitmq
+      # Минимальная пауза между обращениями к Gemini. Ключ один на всех, лимит
+      # у него на ключ — выставить под свой тариф. 0 снимает ограничение.
+      - GEMINI_MIN_INTERVAL_MS=${GEMINI_MIN_INTERVAL_MS:-4000}
+    volumes:
+      - ./php:/var/www/html
+      - ./data:/var/www/data
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      mysql:
+        condition: service_started
+
+  ## RabbitMQ
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    container_name: rabbitmq
+    restart: unless-stopped
+    ports:
+      - "5672:5672"
+      # Веб-морда: смотреть очереди, вручную публиковать сообщения, проверять
+      # отложенные повторы. В проде плагина нет — он стоит памяти.
+      - "15672:15672"
+    healthcheck:
+      # Именно check_port_connectivity, а не ping: ping отвечает, пока брокер
+      # ещё не принимает соединения на 5672, и воркер стартует в отказ.
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_port_connectivity"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
 
   ## MySQL
   mysql:
