@@ -7,20 +7,18 @@ config.txt
 # ngrok/ngrok.yml удалён: authtoken идёт через .env, файл compose не использовал.
 # Правило оставлено на случай, если ngrok сгенерирует его заново.
 ngrok/
+# Ручные бэкапы перед крупными правками (.env.bak-before-queue и такие же копии
+# config.txt) содержат живые токены, но под правила выше не подходят из-за суффикса.
+*.bak
+*.bak-*
+*.backup
 
 # --- Логи ---
 *.log
 
 # --- Зависимости (composer install внутри контейнера php) ---
 php/vendor/
-
-# --- Кэш скомпилированных шаблонов Smarty ---
-php/src/App/templates_c/*
-!php/src/App/templates_c/.gitkeep
-
-# --- Python ---
-__pycache__/
-*.py[cod]
+php/vendor.*/
 
 # --- IDE ---
 .idea/

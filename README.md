@@ -177,10 +177,15 @@ docker compose exec php php bin/import-hints.php
 
 | Что | Адрес |
 |-----|-------|
-| Бот и дашборд | http://localhost:8081 (дашборд — `/dashboard`) |
+| Бот, Mini App и API | http://localhost:8081 — Mini App на `/webapp/`, API на `/api.php` |
 | Adminer | http://localhost:8080 |
+| RabbitMQ, веб-морда | http://localhost:15672 — `guest` / `guest` |
 | ngrok inspector | http://localhost:4040 |
 | MySQL | `localhost:3306` |
+
+Mini App открывается только из Telegram: без заголовка `X-Telegram-Init-Data`
+API отвечает `403`, а сам `initData` выдаёт клиент Telegram. В браузере
+по прямой ссылке будет пустой экран — это не поломка.
 
 Подключение в Adminer: сервер `mysql-db`, пользователь `root`, пароль `root`,
 база `telegram_bot`. Само приложение ходит в БД под этой же учёткой
@@ -191,23 +196,33 @@ docker compose exec php php bin/import-hints.php
 | Команда | Что делает |
 |---------|-----------|
 | `/start`, `/help` | Регистрация и справка |
-| `/dashboard` | Персональная ссылка на веб-дашборд (с токеном доступа) |
+| `/app` | Кнопка на Mini App. `/dashboard` — старый алиас той же команды |
 | `/categories` | Просмотр, добавление и удаление своих категорий |
 | `/setlimit` | Лимит на конкретную категорию |
 | `/setgloballimit` | Общий лимит на месяц |
 | любой другой текст | Разбирается как траты: `название сумма` через запятую |
 
-## API дашборда
+## API Mini App
 
-`/api.php?user_id=<id>&token=<dashboard_token>&action=<action>` — токен обязателен,
-без него ответ `403 Access denied`. Токен выдаёт `/dashboard` в боте.
+`/api.php?action=<action>`, авторизация — заголовок `X-Telegram-Init-Data`
+с подписанным `initData` от Telegram. Подпись проверяется в
+[TelegramAuth](php/src/App/Services/TelegramAuth.php) (HMAC по `WebAppData`,
+свежесть `auth_date` 24 часа), без валидной подписи ответ `403 Access denied`.
+Токена в URL больше нет: он утекал в историю чата и в логи прокси.
+
+Какую книгу трат открывать, приложение передаёт в `?startapp=<id чата>`;
+право на чужую книгу проверяет [LedgerResolver](php/src/App/Services/LedgerResolver.php),
+а не подпись.
 
 | Метод | action | Назначение |
 |-------|--------|-----------|
-| GET | `expenses`, `categories`, `analytics_by_period` | Чтение |
-| POST | `expense`, `category` | Создание |
-| PUT | `expense` | Изменение траты |
-| DELETE | `expense`, `category` | Удаление |
+| GET | `overview` | Весь экран «Обзор» одним запросом, со сравнением периодов |
+| GET | `expenses`, `categories`, `limits`, `analytics_by_period` | Чтение |
+| GET | `suggestions` | Частые позиции для подсказок в форме |
+| POST | `expense`, `category`, `limit` | Создание |
+| POST | `expense_smart` | Разбор строки «кофе 300, такси 450» целиком |
+| PUT | `expense` | Изменение траты, поля частичные |
+| DELETE | `expense`, `category`, `limit` | Удаление |
 
 ## Схема БД
 
@@ -258,6 +273,25 @@ docker compose exec -T mysql mysql --default-character-set=utf8mb4 -uroot -proot
   `docker compose restart worker`. Правки `Dockerfile` и `docker-compose.yml`
   требуют `docker compose up --build`.
 - **Новая подпапка в `php/src/App/`** → `docker compose exec php composer dump-autoload`.
+
+## Прод
+
+Отдельный компоуз [docker-compose.prod.yml](docker-compose.prod.yml): вместо ngrok —
+постоянный домен и [Caddy](Caddyfile) с автоматическим HTTPS, вместо
+`config.txt` — переменные окружения из `.env` на сервере (шаблон —
+[.env.prod.example](.env.prod.example)).
+
+```bash
+docker compose -f docker-compose.prod.yml up -d --build
+```
+
+Наружу смотрит только Caddy на 80 и 443. Adminer слушает `127.0.0.1:8080`
+и доступен через SSH-туннель, у MySQL и RabbitMQ публикации портов нет вообще —
+`ports` в компоузе идут мимо цепочки `INPUT`, поэтому фаервол их не закрыл бы.
+У RabbitMQ в проде образ без плагина управления: веб-морда стоит памяти.
+
+Как это устроено и почему именно так — [DEPLOY.md](DEPLOY.md): сокеты и bind,
+DNS и TTL, netfilter и `DOCKER-USER`, ACME и выпуск сертификата, разбор отказов.
 
 ## Разработка
 
