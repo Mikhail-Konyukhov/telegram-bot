@@ -40,8 +40,27 @@ class ExpenseQueue
     private AMQPChannel $channel;
     private ?string $consumerTag = null;
 
-    public function __construct()
+    /** Имена очередей с учётом префикса — см. конструктор. */
+    private string $main;
+    private string $retry;
+    private string $dead;
+
+    private int $retryTtlMs;
+
+    /**
+     * @param string $prefix Приставка к именам очередей. Нужна тестам: они
+     *                       поднимают свою топологию рядом с рабочей, не трогая её.
+     * @param int|null $retryTtlMs Пауза перед повтором. По умолчанию минута;
+     *                             тест на цепочку повторов на ней стоял бы
+     *                             по минуте за круг.
+     */
+    public function __construct(string $prefix = '', ?int $retryTtlMs = null)
     {
+        $this->main = $prefix . self::MAIN;
+        $this->retry = $prefix . self::RETRY;
+        $this->dead = $prefix . self::DEAD;
+        $this->retryTtlMs = $retryTtlMs ?? self::RETRY_TTL_MS;
+
         $this->connection = new AMQPStreamConnection(
             getenv('RABBITMQ_HOST') ?: 'rabbitmq',
             (int)(getenv('RABBITMQ_PORT') ?: 5672),
@@ -77,24 +96,43 @@ class ExpenseQueue
      */
     private function declareQueues(): void
     {
-        $this->channel->queue_declare(self::MAIN, false, true, false, false, false, new AMQPTable([
+        $this->channel->queue_declare($this->main, false, true, false, false, false, new AMQPTable([
             'x-dead-letter-exchange'    => self::EXCHANGE,
-            'x-dead-letter-routing-key' => self::RETRY,
+            'x-dead-letter-routing-key' => $this->retry,
         ]));
 
-        $this->channel->queue_declare(self::RETRY, false, true, false, false, false, new AMQPTable([
-            'x-message-ttl'             => self::RETRY_TTL_MS,
+        $this->channel->queue_declare($this->retry, false, true, false, false, false, new AMQPTable([
+            'x-message-ttl'             => $this->retryTtlMs,
             'x-dead-letter-exchange'    => self::EXCHANGE,
-            'x-dead-letter-routing-key' => self::MAIN,
+            'x-dead-letter-routing-key' => $this->main,
         ]));
 
-        $this->channel->queue_declare(self::DEAD, false, true, false, false, false);
+        $this->channel->queue_declare($this->dead, false, true, false, false, false);
+    }
+
+    /** Имя рабочей очереди с учётом префикса. */
+    public function mainQueue(): string
+    {
+        return $this->main;
+    }
+
+    /** Имя отстойника с учётом префикса. */
+    public function retryQueue(): string
+    {
+        return $this->retry;
+    }
+
+    /** Имя очереди окончательных отказов с учётом префикса. */
+    public function deadQueue(): string
+    {
+        return $this->dead;
     }
 
     /**
      * @param array<string, mixed> $payload
+     * @param string|null $queue Куда публиковать; по умолчанию рабочая очередь
      */
-    public function publish(array $payload, string $queue = self::MAIN): void
+    public function publish(array $payload, ?string $queue = null): void
     {
         $message = new AMQPMessage(
             json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR),
@@ -105,7 +143,7 @@ class ExpenseQueue
             ]
         );
 
-        $this->channel->basic_publish($message, self::EXCHANGE, $queue);
+        $this->channel->basic_publish($message, self::EXCHANGE, $queue ?? $this->main);
     }
 
     /**
@@ -121,7 +159,7 @@ class ExpenseQueue
         // паузу в самом воркере.
         $this->channel->basic_qos(0, 1, false);
         $this->consumerTag = $this->channel->basic_consume(
-            self::MAIN,
+            $this->main,
             '',
             false,
             false,

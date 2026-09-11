@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    Три набора, потому что у них разные требования к среде:
+
+    unit        — ни БД, ни сети. Гоняется хостовым php за секунды.
+    integration — нужен MySQL, поэтому только внутри контейнера:
+                  на хосте нет pdo_mysql.
+    e2e         — нужен поднятый docker compose целиком (php, mysql, rabbitmq).
+
+    По умолчанию (`phpunit` без аргументов) идёт только unit — набор, который
+    ничего не требует и ничего за собой не оставляет.
+-->
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd" bootstrap="tests/bootstrap.php" cacheDirectory=".phpunit.cache" colors="true" failOnWarning="true" failOnNotice="true" beStrictAboutOutputDuringTests="true" defaultTestSuite="unit">
+  <testsuites>
+    <testsuite name="unit">
+      <directory>tests/Unit</directory>
+    </testsuite>
+    <testsuite name="integration">
+      <directory>tests/Integration</directory>
+    </testsuite>
+    <testsuite name="e2e">
+      <directory>tests/E2E</directory>
+    </testsuite>
+  </testsuites>
+  <!--
+        ignoreIndirectDeprecations — про чужой код: telegram-bot/api объявляет
+        неявно-nullable параметры, и на хостовом PHP 8.4 это даёт deprecation,
+        которого в контейнере (8.2) нет. Отчёт ограничен нашими файлами, чтобы
+        вывод на хосте и в контейнере совпадал; собственные предупреждения
+        при этом не прячутся.
+    -->
+  <source restrictNotices="true" restrictWarnings="true" ignoreIndirectDeprecations="true">
+    <include>
+      <directory>src/App</directory>
+    </include>
+  </source>
+</phpunit>

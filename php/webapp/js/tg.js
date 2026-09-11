@@ -18,6 +18,12 @@ export function init() {
   if (!tg) return;
   tg.ready();
   tg.expand();
+  // BackButton и MainButton живут в шапке Telegram, а не в документе, и
+  // переживают закрытие приложения. Если пользователь вышел из открытого шита,
+  // «назад» осталась видимой, а её обработчик умер вместе со страницей: кнопка
+  // на месте и ничего не делает. Сбрасываем обе на старте.
+  backButton.hide();
+  mainButton.hide();
   // Иначе вертикальный скролл списка тянет за собой закрытие приложения.
   if (since('7.7') && tg.disableVerticalSwipes) tg.disableVerticalSwipes();
   if (since('6.1') && tg.setHeaderColor) tg.setHeaderColor('secondary_bg_color');
@@ -61,6 +67,9 @@ export function alert(message) {
 export const backButton = {
   show(handler) {
     if (!tg || !tg.BackButton) return;
+    // Как и у mainButton: без снятия прежнего обработчика второй шит поверх
+    // первого оставляет висеть оба, и «назад» закрывает не то, что открыто.
+    this.hide();
     this._handler = handler;
     tg.BackButton.onClick(handler);
     tg.BackButton.show();
@@ -73,10 +82,33 @@ export const backButton = {
   },
 };
 
+/**
+ * Замена MainButton для веб-версии: в браузере нативной кнопки Telegram нет,
+ * а без неё нечем ни добавить трату, ни сохранить форму.
+ */
+const webButton = {
+  node: null,
+  show(text, handler) {
+    this.hide();
+    this.node = document.createElement('button');
+    this.node.className = 'mainbtn';
+    this.node.textContent = text;
+    this.node.addEventListener('click', handler);
+    document.body.append(this.node);
+  },
+  progress(on) {
+    if (this.node) this.node.disabled = on;
+  },
+  hide() {
+    if (this.node) this.node.remove();
+    this.node = null;
+  },
+};
+
 /** Главная кнопка внизу экрана: на списках «Добавить», в формах «Сохранить». */
 export const mainButton = {
   show(text, handler) {
-    if (!tg || !tg.MainButton) return;
+    if (!tg || !tg.MainButton) return webButton.show(text, handler);
     this.hide();
     this._handler = handler;
     tg.MainButton.setText(text);
@@ -85,12 +117,12 @@ export const mainButton = {
     tg.MainButton.enable();
   },
   progress(on) {
-    if (!tg || !tg.MainButton) return;
+    if (!tg || !tg.MainButton) return webButton.progress(on);
     if (on) tg.MainButton.showProgress(false);
     else tg.MainButton.hideProgress();
   },
   hide() {
-    if (!tg || !tg.MainButton) return;
+    if (!tg || !tg.MainButton) return webButton.hide();
     if (this._handler) tg.MainButton.offClick(this._handler);
     this._handler = null;
     tg.MainButton.hide();

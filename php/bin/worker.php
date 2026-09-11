@@ -77,7 +77,7 @@ $rollback = static function () use ($db): void {
     }
 };
 
-error_log('worker: слушаю очередь ' . ExpenseQueue::MAIN);
+error_log('worker: слушаю очередь ' . $queue->mainQueue());
 
 try {
     $queue->consume(function (AMQPMessage $message) use ($handler, $processed, $db, $queue, $tg, $rollback): void {
@@ -103,8 +103,8 @@ try {
         $attempt = ExpenseQueue::attempt($message);
 
         if ($attempt > MAX_ATTEMPTS) {
-            error_log("worker: апдейт {$updateId} исчерпал попытки, отправляю в " . ExpenseQueue::DEAD);
-            $queue->publish($payload, ExpenseQueue::DEAD);
+            error_log("worker: апдейт {$updateId} исчерпал попытки, отправляю в " . $queue->deadQueue());
+            $queue->publish($payload, $queue->deadQueue());
 
             // Уведомление не должно мешать подтверждению: если чат недоступен
             // (бота заблокировали, группу удалили), непойманное исключение увело бы

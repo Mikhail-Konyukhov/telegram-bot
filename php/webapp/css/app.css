@@ -591,3 +591,87 @@ select {
     filter: brightness(0.97);
   }
 }
+
+/* ── Веб-версия ─────────────────────────────────────────────────────── */
+
+/*
+ * Замена MainButton: в браузере нативной кнопки Telegram нет. Слой 35 — между
+ * шитом (30) и тостами (40): в форме траты эта же кнопка сохраняет.
+ */
+.mainbtn {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: calc(var(--tabbar-h) + var(--safe-bottom) + 12px);
+  z-index: 35;
+  width: min(608px, calc(100% - 32px));
+  margin: 0 auto;
+  border: 0;
+  border-radius: 10px;
+  padding: 12px 16px;
+  min-height: 48px;
+  background: var(--accent);
+  color: var(--accent-text);
+  font-size: 16px;
+  font-weight: 600;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+  cursor: pointer;
+}
+
+.mainbtn[disabled] {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* Кнопка висит над контентом, поэтому под ней резервируется место. */
+body:has(.mainbtn) #app {
+  padding-bottom: calc(var(--tabbar-h) + var(--safe-bottom) + 84px);
+}
+
+body:has(.sheet-backdrop) .sheet {
+  padding-bottom: calc(var(--pad) + var(--safe-bottom) + 72px);
+}
+
+/* Строка списка там, где свайпать нечем: действие стоит справа от неё. */
+.swipe.inline {
+  display: flex;
+}
+
+.swipe.inline .item {
+  flex: 1;
+  order: 1;
+}
+
+.swipe.inline .actions {
+  position: static;
+  order: 2;
+}
+
+/*
+ * Тёмная тема для браузера. Переопределяются именно фолбэки: переменные
+ * --tg-theme-* стоят первым аргументом var(), поэтому внутри Telegram
+ * по-прежнему выигрывает тема клиента.
+ */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: var(--tg-theme-secondary-bg-color, #17181a);
+    --card: var(--tg-theme-section-bg-color, var(--tg-theme-bg-color, #232427));
+    --text: var(--tg-theme-text-color, #f2f2f5);
+    --hint: var(--tg-theme-hint-color, #9a9ba0);
+    --accent: var(--tg-theme-button-color, #4a9eea);
+    --accent-text: var(--tg-theme-button-text-color, #ffffff);
+    --danger: var(--tg-theme-destructive-text-color, #ff6b6b);
+    --separator: var(--tg-theme-section-separator-color, rgba(255, 255, 255, 0.14));
+  }
+}
+
+/* Десктоп: та же раскладка, шире колонка. */
+@media (min-width: 900px) {
+  #app {
+    max-width: 900px;
+  }
+
+  .mainbtn {
+    width: min(868px, calc(100% - 32px));
+  }
+}

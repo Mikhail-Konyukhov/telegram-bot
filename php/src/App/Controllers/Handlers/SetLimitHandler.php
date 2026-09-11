@@ -34,7 +34,9 @@ class SetLimitHandler
         $msgText = trim($update->getMessage()->getText());
         $chatId = $update->getMessage()->getChat()->getId();
 
-        if (preg_match('/^\/setlimit\s+(\S+)\s+([\d.,]+)$/i', $msgText, $m)) {
+        // Категория жадно захватывает всё до последнего числа в строке — иначе
+        // «кафе и рестораны 3000» обрывалась бы на первом слове.
+        if (preg_match('/^\/setlimit\s+(.+)\s+([\d.,]+)$/i', $msgText, $m)) {
             [, $category, $lim] = $m;
             $limit = (float)str_replace(',', '.', $lim);
             // limits ссылается на users.id — в группе владельца ещё может не быть

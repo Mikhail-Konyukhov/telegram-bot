@@ -95,12 +95,12 @@ class CategoryHandler
             return;
         }
 
-        $message = "📋 **Ваши категории:**\n\n";
+        $message = "📋 Ваши категории:\n\n";
         
         // Системные категории
         $defaultCategories = $this->categoryModel->getDefaultCategories();
         if (!empty($defaultCategories)) {
-            $message .= "🔧 **Системные категории:**\n";
+            $message .= "🔧 Системные категории:\n";
             foreach ($defaultCategories as $category) {
                 $message .= "• " . $category . "\n";
             }
@@ -109,14 +109,14 @@ class CategoryHandler
 
         // Персональные категории
         if (!empty($personalCategories)) {
-            $message .= "👤 **Ваши персональные категории:**\n";
+            $message .= "👤 Ваши персональные категории:\n";
             foreach ($personalCategories as $category) {
                 $message .= "• " . $category['name'] . "\n";
             }
             $message .= "\n";
         }
 
-        $message .= "ℹ️ **Команды:**\n";
+        $message .= "ℹ️ Команды:\n";
         $message .= "/categories add название - добавить категорию\n";
         $message .= "/categories delete название - удалить категорию";
 
@@ -181,12 +181,12 @@ class CategoryHandler
      */
     private function showHelp(int $chatId): void
     {
-        $message = "📋 **Управление категориями**\n\n";
-        $message .= "**Доступные команды:**\n";
+        $message = "📋 Управление категориями\n\n";
+        $message .= "Доступные команды:\n";
         $message .= "/categories list - показать все категории\n";
         $message .= "/categories add название - добавить новую категорию\n";
         $message .= "/categories delete название - удалить персональную категорию\n\n";
-        $message .= "**Примеры:**\n";
+        $message .= "Примеры:\n";
         $message .= "/categories add образование\n";
         $message .= "/categories delete образование\n\n";
         $message .= "ℹ️ Системные категории удалить нельзя, но вы можете добавлять свои персональные.";

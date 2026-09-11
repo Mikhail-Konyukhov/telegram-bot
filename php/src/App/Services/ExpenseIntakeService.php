@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\Category;
 use App\Models\CategoryHint;
 use App\Models\Expense;
 use GuzzleHttp\Client as HttpClient;
@@ -17,10 +18,20 @@ class ExpenseIntakeService
     private CategoryHint $hints;
     private GeminiClassifier $gemini;
 
-    public function __construct(HttpClient $http, string $geminiApiKey)
-    {
-        $this->expenseModel = new Expense();
-        $this->hints = new CategoryHint();
+    /**
+     * Модели — необязательные параметры: прод создаёт их сам, тесты подставляют
+     * заглушки, потому что настоящие в конструкторе поднимают соединение с БД.
+     * Классификатору отдельный параметр не нужен: он и так собирается из
+     * переданного HTTP-клиента, а тому подсовывается MockHandler.
+     */
+    public function __construct(
+        HttpClient $http,
+        string $geminiApiKey,
+        ?Expense $expenses = null,
+        ?CategoryHint $hints = null
+    ) {
+        $this->expenseModel = $expenses ?? new Expense();
+        $this->hints = $hints ?? new CategoryHint();
         $this->gemini = new GeminiClassifier($http, $geminiApiKey);
     }
 
@@ -38,40 +49,36 @@ class ExpenseIntakeService
      */
     public function parse(int $userId, string $text, array $categories): array
     {
+        $parsed = ExpenseTextParser::parse($text);
+
         $items = [];
-        $errors = [];
+        $errors = $parsed['errors'];
         $unknown = [];
 
-        foreach ($this->splitItems($text) as $index => $chunk) {
-            $parsed = $this->splitNameAndPrice($chunk);
-
-            if ($parsed === null) {
-                $errors[] = "Не удалось разобрать «{$chunk}»";
-                continue;
-            }
-
-            $known = $this->hints->find($userId, $parsed['name']);
+        foreach ($parsed['items'] as $index => $item) {
+            $known = $this->hints->find($userId, $item['name']);
 
             // Подсказка на удалённую категорию не должна её воскрешать.
             if ($known !== null && in_array($known, $categories, true)) {
-                $items[$index] = $parsed + ['category' => $known, 'source' => 'hint'];
+                $items[$index] = $item + ['category' => $known, 'source' => 'hint'];
                 continue;
             }
 
-            $items[$index] = $parsed + ['category' => null, 'source' => 'gemini'];
-            $unknown[$index] = $parsed['name'];
+            $items[$index] = $item + ['category' => null, 'source' => 'gemini'];
+            $unknown[$index] = $item['name'];
         }
 
         if ($unknown) {
             $guessed = $this->gemini->classify(array_values($unknown), $categories);
 
             foreach ($unknown as $index => $name) {
-                if (isset($guessed[$name])) {
-                    $items[$index]['category'] = $guessed[$name];
-                } else {
-                    $errors[] = "Не удалось определить категорию для «{$name}»";
-                    unset($items[$index]);
-                }
+                // Модель промолчала о позиции. Трата всё равно записывается:
+                // выброшенная, она пропадала совсем — ни в истории, ни в
+                // лимитах, и вернуть её было неоткуда. Категорию пользователь
+                // проставит кнопкой в подтверждении, а до тех пор сумма уже
+                // учтена в общем лимите. Отдельной строки об ошибке нет:
+                // в подтверждении и так стоит «без категории».
+                $items[$index]['category'] = $guessed[$name] ?? Category::UNCATEGORIZED;
             }
         }
 
@@ -99,50 +106,15 @@ class ExpenseIntakeService
                 $date
             );
 
-            // Ответ модели попадает в словарь, чтобы второй раз за него не платить.
-            $this->hints->remember($userId, $item['name'], $item['category']);
+            // Ответ модели попадает в словарь, чтобы второй раз за него не
+            // платить. Пустышку туда писать нельзя: «психолог» навсегда остался
+            // бы «без категории» и до классификатора больше не дошёл.
+            if ($item['category'] !== Category::UNCATEGORIZED) {
+                $this->hints->remember($userId, $item['name'], $item['category']);
+            }
 
             return $item;
         }, $items);
     }
 
-    /**
-     * Режет сообщение на позиции.
-     *
-     * Запятая — разделитель, только если за ней не идёт цифра: иначе
-     * «кофе 300,50» распалось бы на «кофе 300» и «50», и трата записывалась
-     * бы без копеек. Перевод строки разделяет всегда — так работает вставка
-     * списка из заметок.
-     *
-     * @param string $text
-     * @return string[]
-     */
-    private function splitItems(string $text): array
-    {
-        $chunks = preg_split('/[;\r\n]+|,(?!\d)/u', $text, -1, PREG_SPLIT_NO_EMPTY);
-
-        return array_values(array_filter(array_map('trim', $chunks), 'strlen'));
-    }
-
-    /**
-     * Отделяет сумму от названия: «кофе 300» и «300 кофе» разбираются одинаково.
-     *
-     * @param string $chunk
-     * @return array{name: string, price: float}|null
-     */
-    private function splitNameAndPrice(string $chunk): ?array
-    {
-        if (!preg_match('/(\d+(?:[.,]\d+)?)/', $chunk, $match)) {
-            return null;
-        }
-
-        $price = (float)str_replace(',', '.', $match[1]);
-        $name = trim(str_replace($match[1], '', $chunk));
-
-        if ($price <= 0 || $name === '') {
-            return null;
-        }
-
-        return ['name' => $name, 'price' => $price];
-    }
 }

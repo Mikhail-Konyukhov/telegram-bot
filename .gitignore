@@ -20,6 +20,10 @@ ngrok/
 php/vendor/
 php/vendor.*/
 
+# --- Тесты ---
+# Кэш PHPUnit (результаты прошлых прогонов, пути к покрытию)
+php/.phpunit.cache/
+
 # --- IDE ---
 .idea/
 .vscode/

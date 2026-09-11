@@ -48,10 +48,16 @@ services:
     restart: unless-stopped
     <<: *logging
     environment:
+      # Часовой пояс дома, а не сервера: сутки в отчётах и «Сегодня» в /stats
+      # должны совпадать с календарём пользователя. PHP берёт его из
+      # src/bootstrap.php, MySQL — через time_zone = SYSTEM.
+      - TZ=Asia/Bishkek
       # config.txt в проде не создаётся — Cfg читает эти переменные напрямую
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - WEBAPP_URL=https://${PUBLIC_DOMAIN}/webapp/
+      # Веб-версия дашборда: то же приложение, но по ссылке из /web, без Telegram
+      - WEB_URL=https://${PUBLIC_DOMAIN}/web/
       # Пусто — приложение работает только в личке (в группах web_app-кнопок нет)
       - MINIAPP_LINK=${MINIAPP_LINK:-}
       - DB_PASSWORD=${MYSQL_ROOT_PASSWORD}
@@ -75,6 +81,10 @@ services:
     <<: *logging
     command: php bin/worker.php
     environment:
+      # Часовой пояс дома, а не сервера: сутки в отчётах и «Сегодня» в /stats
+      # должны совпадать с календарём пользователя. PHP берёт его из
+      # src/bootstrap.php, MySQL — через time_zone = SYSTEM.
+      - TZ=Asia/Bishkek
       # Только то, что нужно разбору траты: WEBAPP_URL и MINIAPP_LINK читает
       # AppHandler, а он остался на синхронном пути.
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
@@ -120,6 +130,10 @@ services:
     restart: unless-stopped
     <<: *logging
     environment:
+      # Часовой пояс дома, а не сервера: сутки в отчётах и «Сегодня» в /stats
+      # должны совпадать с календарём пользователя. PHP берёт его из
+      # src/bootstrap.php, MySQL — через time_zone = SYSTEM.
+      TZ: Asia/Bishkek
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
       MYSQL_DATABASE: telegram_bot
       MYSQL_INITDB_SKIP_TZINFO: '1'
@@ -189,6 +203,12 @@ services:
         curl -sS -X POST "https://api.telegram.org/bot$$TELEGRAM_BOT_TOKEN/setChatMenuButton" \
           -H "Content-Type: application/json" \
           -d "{\"menu_button\":{\"type\":\"web_app\",\"text\":\"Расходы\",\"web_app\":{\"url\":\"$$URL/webapp/\"}}}"
+        echo
+
+        echo ">> setMyCommands"
+        curl -sS -X POST "https://api.telegram.org/bot$$TELEGRAM_BOT_TOKEN/setMyCommands" \
+          -H "Content-Type: application/json" \
+          -d '{"commands":[{"command":"stats","description":"Статистика в чате"},{"command":"app","description":"Приложение в Telegram"},{"command":"web","description":"Дашборд в браузере"},{"command":"categories","description":"Категории"},{"command":"setlimit","description":"Лимит по категории"},{"command":"setgloballimit","description":"Общий лимит"},{"command":"help","description":"Справка"}]}'
         echo
 
 volumes:

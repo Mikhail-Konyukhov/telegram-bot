@@ -5,6 +5,10 @@ services:
     build: ./php
     container_name: php-bot
     environment:
+      # Часовой пояс дома, а не сервера: сутки в отчётах и «Сегодня» в /stats
+      # должны совпадать с календарём пользователя. PHP берёт его из
+      # src/bootstrap.php, MySQL — через time_zone = SYSTEM.
+      - TZ=Asia/Bishkek
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
       # `php -S` без этой переменной обрабатывает запросы строго по одному:
       # вебхук, ждущий Gemini, задерживал и запросы Mini App к api.php.
@@ -28,6 +32,10 @@ services:
     restart: unless-stopped
     command: php bin/worker.php
     environment:
+      # Часовой пояс дома, а не сервера: сутки в отчётах и «Сегодня» в /stats
+      # должны совпадать с календарём пользователя. PHP берёт его из
+      # src/bootstrap.php, MySQL — через time_zone = SYSTEM.
+      - TZ=Asia/Bishkek
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
       - RABBITMQ_HOST=rabbitmq
       # Минимальная пауза между обращениями к Gemini. Ключ один на всех, лимит
@@ -67,6 +75,10 @@ services:
     container_name: mysql-db
     restart: always
     environment:
+      # Часовой пояс дома, а не сервера: сутки в отчётах и «Сегодня» в /stats
+      # должны совпадать с календарём пользователя. PHP берёт его из
+      # src/bootstrap.php, MySQL — через time_zone = SYSTEM.
+      TZ: Asia/Bishkek
       MYSQL_ROOT_PASSWORD: root
       MYSQL_DATABASE: telegram_bot
       MYSQL_USER: user
@@ -154,10 +166,19 @@ services:
           > /tmp/setmenu.json
         echo ">> Menu button response: $$(cat /tmp/setmenu.json)"
 
+        echo ">> Устанавливаем меню команд..."
+        curl -s -X POST \
+          "https://api.telegram.org/bot$$TELEGRAM_BOT_TOKEN/setMyCommands" \
+          -H "Content-Type: application/json" \
+          -d '{"commands":[{"command":"stats","description":"Статистика в чате"},{"command":"app","description":"Приложение в Telegram"},{"command":"web","description":"Дашборд в браузере"},{"command":"categories","description":"Категории"},{"command":"setlimit","description":"Лимит по категории"},{"command":"setgloballimit","description":"Общий лимит"},{"command":"help","description":"Справка"}]}' \
+          > /tmp/setcommands.json
+        echo ">> Commands response: $$(cat /tmp/setcommands.json)"
+
         echo ">> Записываем URL в config.txt..."
         echo "WEBAPP_URL=$$URL/webapp/" > /var/www/html/config.txt
         echo "TELEGRAM_BOT_TOKEN=$$TELEGRAM_BOT_TOKEN" >> /var/www/html/config.txt
         echo "GEMINI_API_KEY=$$GEMINI_API_KEY" >> /var/www/html/config.txt
+        echo "WEB_URL=$$URL/web/" >> /var/www/html/config.txt
 
 volumes:
   mysql_data:

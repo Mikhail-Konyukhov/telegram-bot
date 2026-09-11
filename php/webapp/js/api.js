@@ -2,7 +2,8 @@
  * Клиент API.
  *
  * initData уходит заголовком, а не в query — так подпись не оседает в логах
- * веб-сервера и прокси.
+ * веб-сервера и прокси. В браузере вне Telegram его нет вовсе: там запрос
+ * авторизует cookie, которую браузер приложит сам (тот же origin).
  */
 
 import { initData } from './tg.js';
@@ -19,7 +20,7 @@ async function request(action, { method = 'GET', params = {}, body = null } = {}
     response = await fetch(`${BASE}?${query}`, {
       method,
       headers: {
-        'X-Telegram-Init-Data': initData,
+        ...(initData ? { 'X-Telegram-Init-Data': initData } : {}),
         ...(body ? { 'Content-Type': 'application/json' } : {}),
       },
       body: body ? JSON.stringify(body) : undefined,
@@ -33,6 +34,12 @@ async function request(action, { method = 'GET', params = {}, body = null } = {}
     payload = await response.json();
   } catch (e) {
     throw new ApiError('Сервер вернул не JSON');
+  }
+
+  // Серверное «Access denied» ничего не подсказывает: в вебе за ним стоит
+  // истёкшая сессия, и чинится она новой ссылкой из бота.
+  if (response.status === 403) {
+    throw new ApiError('Доступ закрыт: откройте приложение из Telegram или получите ссылку командой /web');
   }
 
   if (!response.ok || !payload.success) {

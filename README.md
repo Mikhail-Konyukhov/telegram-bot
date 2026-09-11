@@ -35,7 +35,7 @@ graph TD
 
 | Контейнер | Папка | Технологии | Порт | Назначение |
 |-----------|-------|------------|------|------------|
-| **php-bot** | `php/` | PHP 8.2 CLI (встроенный сервер `php -S`) | **8081** | Webhook Telegram, Mini App, REST API |
+| **php-bot** | `php/` | PHP 8.2 CLI (встроенный сервер `php -S`) | **8081** | Webhook Telegram, Mini App, веб-версия, REST API |
 | **expense-worker** | `php/bin/` | тот же образ, `php bin/worker.php` | — | Разбирает траты из очереди, классифицирует, отвечает пользователю |
 | **rabbitmq** | — | RabbitMQ 3.13 | **5672**, **15672** | Очередь трат: `expenses`, `expenses.retry`, `expenses.dead` |
 | **mysql-db** | `php/database/` | MySQL 5.7 | **3306** | Пользователи, категории, лимиты, история трат, словарь категорий |
@@ -177,7 +177,7 @@ docker compose exec php php bin/import-hints.php
 
 | Что | Адрес |
 |-----|-------|
-| Бот, Mini App и API | http://localhost:8081 — Mini App на `/webapp/`, API на `/api.php` |
+| Бот, клиент и API | http://localhost:8081 — Mini App на `/webapp/`, веб-версия на `/web/`, API на `/api.php` |
 | Adminer | http://localhost:8080 |
 | RabbitMQ, веб-морда | http://localhost:15672 — `guest` / `guest` |
 | ngrok inspector | http://localhost:4040 |
@@ -185,7 +185,9 @@ docker compose exec php php bin/import-hints.php
 
 Mini App открывается только из Telegram: без заголовка `X-Telegram-Init-Data`
 API отвечает `403`, а сам `initData` выдаёт клиент Telegram. В браузере
-по прямой ссылке будет пустой экран — это не поломка.
+по прямой ссылке на `/webapp/` будет пустой экран — это не поломка.
+
+Те же экраны без Telegram — на `/web/`, по ссылке из команды `/web`.
 
 Подключение в Adminer: сервер `mysql-db`, пользователь `root`, пароль `root`,
 база `telegram_bot`. Само приложение ходит в БД под этой же учёткой
@@ -196,19 +198,27 @@ API отвечает `403`, а сам `initData` выдаёт клиент Teleg
 | Команда | Что делает |
 |---------|-----------|
 | `/start`, `/help` | Регистрация и справка |
+| `/stats` | Дашборд прямо в чате: обзор, категории, траты, лимиты. Разделы и период переключаются кнопками. `/stats lim` открывает раздел сразу |
 | `/app` | Кнопка на Mini App. `/dashboard` — старый алиас той же команды |
+| `/web` | Ссылка на те же экраны в обычном браузере. Действует неделю, дальше доступ держит cookie |
 | `/categories` | Просмотр, добавление и удаление своих категорий |
 | `/setlimit` | Лимит на конкретную категорию |
 | `/setgloballimit` | Общий лимит на месяц |
 | любой другой текст | Разбирается как траты: `название сумма` через запятую |
 
-## API Mini App
+## API
 
-`/api.php?action=<action>`, авторизация — заголовок `X-Telegram-Init-Data`
+`/api.php?action=<action>`. Авторизация — заголовок `X-Telegram-Init-Data`
 с подписанным `initData` от Telegram. Подпись проверяется в
 [TelegramAuth](php/src/App/Services/TelegramAuth.php) (HMAC по `WebAppData`,
 свежесть `auth_date` 24 часа), без валидной подписи ответ `403 Access denied`.
 Токена в URL больше нет: он утекал в историю чата и в логи прокси.
+
+Веб-версия предъявляет вместо заголовка cookie `web_session` — подписанную тем же
+токеном бота ([WebSession](php/src/App/Services/WebSession.php)). Её ставит
+`/web/` в обмен на ссылку из команды `/web`; ссылка живёт неделю, cookie — месяц,
+и в адресе токен не остаётся. Отозвать выданную сессию нечем: она проверяется
+подписью, а не записью в базе.
 
 Какую книгу трат открывать, приложение передаёт в `?startapp=<id чата>`;
 право на чужую книгу проверяет [LedgerResolver](php/src/App/Services/LedgerResolver.php),
@@ -306,14 +316,49 @@ docker compose down -v && docker compose up --build # полный сброс, �
 Автозагрузка — PSR-4, `App\` → `php/src/App/`. Имя файла совпадает с именем класса.
 Код пишется под **PHP 8.2** (см. `config.platform.php` в `php/composer.json`).
 
+## Тесты
+
+```bash
+cd php && php vendor/bin/phpunit                    # быстрые, без БД и сети (~1 сек)
+docker compose exec php php vendor/bin/phpunit --testsuite integration
+docker compose exec php php vendor/bin/phpunit --testsuite e2e
+cd php/webapp/js && node --test                     # Mini App, форматирование
+```
+
+Наборы разделены по тому, что им нужно от среды:
+
+| Набор | Что покрывает | Требует |
+|---|---|---|
+| `unit` | разбор ввода, нормализация словаря, подпись initData, ветвление Gemini «повторять / не повторять», доступ к книге, маршрутизация API | ничего |
+| `integration` | приоритет личного словаря над общим, скоуп трат по владельцу, транзакция воркера | MySQL |
+| `e2e` | контракт `api.php` целиком, цепочка повторов RabbitMQ до `dead` | поднятый compose |
+| JS | деньги, даты, границы периодов | Node 20+ |
+
+Интеграционные и E2E работают по отдельной базе `telegram_bot_test` и по очередям
+с префиксом `test.`, поэтому рабочие данные не задевают. Базу нужно создать один раз:
+
+```bash
+sed 's/telegram_bot/telegram_bot_test/g' php/database/init.sql \
+  | docker compose exec -T mysql mysql -uroot -proot
+```
+
+Дев-зависимости (PHPUnit) ставятся обычным `composer install` — на хосте или через
+`docker compose run --rm php composer install`.
+
 ## Планы
 
 - [ ] Валидация данных во всех формах
 - [ ] Внятная обработка ошибок и уведомления пользователю
 - [ ] Логирование действий пользователей
-- [ ] Unit-тесты критичных компонентов
 - [ ] Расширить общий словарь: `hints.csv` пока стартовый, 172 записи
+- [ ] Решить, чинить ли разбор количества: «2 кофе 300» сейчас читается как две
+      единицы «кофе 300», а «молоко 0,5 л 90» — как молоко за 50 копеек. Ценой
+      берётся первое число строки. Поведение закреплено тестами, так что объём
+      правки виден сразу
+- [ ] Решить, чинить ли границы периодов: «Месяц», выбранный 31-го числа, даёт
+      окно внутри текущего месяца, а «Год» 29 февраля промахивается на день
 
 Сделано ранее: управление категориями, Mini App вместо дашборда, учёт пересланных
 сообщений, общая книга трат на группу, постоянный домен вместо ngrok в проде,
-индекс `(user_id, ts)` на `expenses`, очередь на RabbitMQ с повторами.
+индекс `(user_id, ts)` на `expenses`, очередь на RabbitMQ с повторами,
+тесты (231 штука: unit / integration / e2e / JS).

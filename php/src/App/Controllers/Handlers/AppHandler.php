@@ -25,19 +25,25 @@ class AppHandler
     }
 
     /**
-     * Кнопка, открывающая Mini App в личном чате.
+     * Кнопки под приветствием: приложение и его текстовый дублёр.
      *
      * Тип web_app принципиален: обычная url-кнопка выкинула бы пользователя
-     * во внешний браузер, а вместе с ним из Telegram.
+     * во внешний браузер, а вместе с ним из Telegram. Вторым рядом — дашборд
+     * прямо в чате: пока Mini App не открывается, первая кнопка бесполезна,
+     * а вторая работает всегда.
      *
      * @param string $url
      * @return InlineKeyboardMarkup
      */
     public static function button(string $url): InlineKeyboardMarkup
     {
-        return new InlineKeyboardMarkup([[
-            ['text' => '📊 Открыть приложение', 'web_app' => ['url' => $url]],
-        ]]);
+        return new InlineKeyboardMarkup([
+            [['text' => '📊 Открыть приложение', 'web_app' => ['url' => $url]]],
+            [[
+                'text'          => '📈 Статистика в чате',
+                'callback_data' => 'd:' . StatsHandler::DEFAULT_SECTION . ':' . StatsHandler::DEFAULT_PERIOD,
+            ]],
+        ]);
     }
 
     /**

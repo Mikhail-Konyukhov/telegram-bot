@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Expense;
 use DateTime;
+use DateTimeImmutable;
 use DateTimeInterface;
 
 /**
@@ -13,9 +14,13 @@ class DashboardService
 {
     private Expense $expenseModel;
 
-    public function __construct()
+    /**
+     * Модель — необязательный параметр: прод создаёт её сам, тесты подставляют
+     * заглушку, потому что настоящая в конструкторе поднимает соединение с БД.
+     */
+    public function __construct(?Expense $expenses = null)
     {
-        $this->expenseModel = new Expense();
+        $this->expenseModel = $expenses ?? new Expense();
     }
 
     /**
@@ -29,6 +34,23 @@ class DashboardService
     public function getExpensesForPeriod(int $chatId, DateTimeInterface $from, DateTimeInterface $to): array
     {
         return $this->expenseModel->getExpensesForPeriod($chatId, $from, $to);
+    }
+
+    /**
+     * Границы предыдущего периода такой же длины — для сравнения
+     * «↓ 62% к прошлому периоду».
+     *
+     * Живёт здесь, а не в вызывающем коде: считать это одинаково обязаны
+     * и «Обзор» Mini App, и текстовый дашборд бота.
+     *
+     * @return DateTimeImmutable[] [$start, $end]
+     */
+    public function previousPeriod(DateTimeImmutable $start, DateTimeImmutable $end): array
+    {
+        $length = (int)$start->diff($end)->days;
+        $prevEnd = $start->modify('-1 day');
+
+        return [$prevEnd->modify("-{$length} days"), $prevEnd];
     }
 
     /**

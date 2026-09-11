@@ -25,4 +25,4 @@ try {
     return;
 }
 
-(new Bot())->handleUpdate($update);
+(new Bot())->handleUpdate($update, $inputData);

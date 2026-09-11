@@ -11,7 +11,7 @@ use TelegramBot\Api\Types\CallbackQuery;
 use TelegramBot\Api\Types\Inline\InlineKeyboardMarkup;
 
 /**
- * Обрабатывает нажатия кнопок под подтверждением траты.
+ * Обрабатывает нажатия инлайн-кнопок бота.
  *
  * Формат callback_data описан в {@see ExpenseConfirmation}. Выбор категории
  * подменяет только клавиатуру, но не текст сообщения: подтверждение с суммами
@@ -76,6 +76,13 @@ class CallbackHandler
 
             case 's':
                 $this->setCategory($chatId, $messageId, (int)$parts[1], (int)$parts[2], (int)$parts[3], $parts[4], $callbackId);
+                break;
+
+            // Дашборд живёт отдельно от подтверждения траты, но разбор
+            // callback_data остаётся здесь: двух мест для одного формата
+            // хватило бы, чтобы они разошлись.
+            case 'd':
+                (new StatsHandler($this->tg))->handleCallback($callbackQuery);
                 break;
 
             default:

@@ -76,6 +76,24 @@ class Cfg
         return rtrim((string)$link, '/');
     }
 
+    /**
+     * Адрес веб-версии дашборда вида `https://<хост>/web/`.
+     *
+     * Значение необязательное — как и {@see getMiniAppLink()}: без него бот
+     * на /web ответит, что веб-версия не настроена.
+     */
+    public function getWebUrl(): ?string
+    {
+        $url = $this->data['WEB_URL'] ?? getenv('WEB_URL');
+
+        if ($url === false || $url === null || $url === '') {
+            return null;
+        }
+
+        // Слэш на конце обязателен: к адресу дописывается `?t=`.
+        return rtrim((string)$url, '/') . '/';
+    }
+
     private function get(string $key): string
     {
         $value = $this->data[$key] ?? getenv($key);

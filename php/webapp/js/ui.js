@@ -78,7 +78,13 @@ export function sheet(title, content, onClose) {
     ...[].concat(content),
   ]);
 
+  // Esc — единственная клавиатурная замена кнопке «назад»: в браузере её нет.
+  const onKey = (e) => {
+    if (e.key === 'Escape') close();
+  };
+
   const close = () => {
+    document.removeEventListener('keydown', onKey);
     backdrop.remove();
     backButton.hide();
     if (onClose) onClose();
@@ -89,6 +95,7 @@ export function sheet(title, content, onClose) {
     if (e.target === backdrop) close();
   });
   document.body.append(backdrop);
+  document.addEventListener('keydown', onKey);
   backButton.show(close);
 
   return close;
@@ -97,12 +104,17 @@ export function sheet(title, content, onClose) {
 /**
  * Оборачивает строку списка в свайп-контейнер с одним действием справа.
  *
+ * Свайпать нечем там, где нет пальца, — мышью строку было бы не удалить вовсе,
+ * поэтому на точном указателе кнопка действия просто видна в строке.
+ *
  * @param {HTMLElement} row
  * @param {{label: string, onAction: Function}} action
  * @returns {HTMLElement}
  */
 export function swipeable(row, action) {
-  const wrap = h('div', { class: 'swipe' }, [
+  const inline = !window.matchMedia('(pointer: coarse)').matches;
+
+  const wrap = h('div', { class: inline ? 'swipe inline' : 'swipe' }, [
     h('div', { class: 'actions' }, [
       h('button', {
         text: action.label,
@@ -114,6 +126,8 @@ export function swipeable(row, action) {
     ]),
     row,
   ]);
+
+  if (inline) return wrap;
 
   const WIDTH = 84;
   let startX = 0;

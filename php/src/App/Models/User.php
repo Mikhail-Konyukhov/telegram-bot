@@ -75,6 +75,61 @@ class User
     }
 
     /**
+     * Переносит книгу трат на новый id чата.
+     *
+     * При апгрейде группы до супергруппы Telegram выдаёт чату новый id, а книга
+     * трат — это чат. Без переноса вся история осталась бы под прежним id, и бот
+     * начал бы с чистого листа: именно так 10.08.2026 из /stats пропало всё,
+     * что было раньше (разбор случившегося — в миграции
+     * `006_merge_migrated_chat.sql`).
+     *
+     * Вызывается только с синхронного пути (`Bot::handleUpdate`), поэтому своя
+     * транзакция здесь не вложится в транзакцию воркера.
+     *
+     * @param int $from Прежний id чата
+     * @param int $to Новый id чата
+     */
+    public function migrate(int $from, int $to): void
+    {
+        if ($from === $to) {
+            return;
+        }
+
+        $this->ensure($to);
+
+        $this->db->beginTransaction();
+
+        try {
+            // У expenses уникальных ключей на user_id нет, поэтому UPDATE без
+            // IGNORE: пропущенная строка означала бы потерянную трату, и лучше
+            // откатить перенос целиком.
+            $this->db->prepare('UPDATE expenses SET user_id = :to WHERE user_id = :from')
+                ->execute(['from' => $from, 'to' => $to]);
+
+            // В categories, limits и category_hints уникальный ключ включает
+            // user_id, и одноимённая запись может быть в обеих книгах. IGNORE
+            // оставляет столкнувшуюся строку под старым id, DELETE её убирает:
+            // побеждает новая книга — её значение пользователь правил последним.
+            foreach (['categories', '`limits`', 'category_hints'] as $table) {
+                $this->db->prepare("UPDATE IGNORE $table SET user_id = :to WHERE user_id = :from")
+                    ->execute(['from' => $from, 'to' => $to]);
+                $this->db->prepare("DELETE FROM $table WHERE user_id = :from")
+                    ->execute(['from' => $from]);
+            }
+
+            // Кэш членства живёт час и пересобирается сам, но строки чата,
+            // которого больше нет, не пересоберутся никогда.
+            $this->db->prepare('DELETE FROM chat_members WHERE chat_id = :from')
+                ->execute(['from' => $from]);
+
+            $this->db->commit();
+        } catch (\Throwable $e) {
+            $this->db->rollBack();
+            throw $e;
+        }
+    }
+
+    /**
      * Возвращает токен дашборда для пользователя.
      *
      * @param int $userId

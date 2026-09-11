@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\Category;
 use App\Models\Expense;
 use App\Models\Limit as LimitModel;
 use TelegramBot\Api\Types\Inline\InlineKeyboardMarkup;
@@ -30,10 +31,14 @@ class ExpenseConfirmation
     private Expense $expenseModel;
     private LimitModel $limitModel;
 
-    public function __construct()
+    /**
+     * Модели — необязательные параметры: прод создаёт их сам, тесты подставляют
+     * заглушки, потому что настоящие в конструкторе поднимают соединение с БД.
+     */
+    public function __construct(?Expense $expenses = null, ?LimitModel $limits = null)
     {
-        $this->expenseModel = new Expense();
-        $this->limitModel = new LimitModel();
+        $this->expenseModel = $expenses ?? new Expense();
+        $this->limitModel = $limits ?? new LimitModel();
     }
 
     /**
@@ -123,7 +128,11 @@ class ExpenseConfirmation
             // Дату показываем, только если трата не сегодняшняя (переслали чек за вчера).
             $when = date('Y-m-d', $ts) !== $today ? ' · ' . date('d.m', $ts) : '';
 
-            $lines[] = '✅ ' . $item['name'] . ' ' . $this->money((float)$item['amount'])
+            // Знак вопроса вместо галочки: трата записана и уже сидит в общем
+            // лимите, но категории у неё нет, и без метки это незаметно.
+            $mark = $item['category'] === Category::UNCATEGORIZED ? '❓' : '✅';
+
+            $lines[] = $mark . ' ' . $item['name'] . ' ' . $this->money((float)$item['amount'])
                 . ' · ' . $item['category'] . $when;
         }
 
@@ -134,8 +143,8 @@ class ExpenseConfirmation
         $lines[] = 'За 30 дней: ' . $this->money($total)
             . ($globalLimit !== null ? ' / ' . $this->money($globalLimit) : '');
 
-        foreach ($this->warnings($chatId, $items, $total, $globalLimit) as $warning) {
-            $lines[] = $warning;
+        foreach ($this->limitLines($chatId, $items, $total, $globalLimit) as $line) {
+            $lines[] = $line;
         }
 
         return implode("\n", $lines);
@@ -173,8 +182,16 @@ class ExpenseConfirmation
     }
 
     /**
-     * Предупреждения по лимитам — единственная часть отчёта, ради которой
-     * стоит прерывать пользователя сразу после ввода.
+     * Лимиты по затронутым категориям — по строке на каждую, у которой лимит
+     * задан, плюс общий.
+     *
+     * Раньше строка появлялась только с 80% лимита, то есть ровно тогда, когда
+     * тратить уже поздно. Теперь расход по категории виден при каждой записи,
+     * а состояние показывает маркер. Категории без лимита молчат: строка
+     * «лимит не задан» под каждой тратой — шум.
+     *
+     * Общий лимит остаётся исключением: его расход уже стоит в строке
+     * «За 30 дней», и второй раз те же числа не нужны — только предупреждение.
      *
      * @param int $chatId
      * @param array $items
@@ -182,9 +199,9 @@ class ExpenseConfirmation
      * @param float|null $globalLimit
      * @return string[]
      */
-    private function warnings(int $chatId, array $items, float $total, ?float $globalLimit): array
+    private function limitLines(int $chatId, array $items, float $total, ?float $globalLimit): array
     {
-        $warnings = [];
+        $lines = [];
 
         foreach (array_unique(array_column($items, 'category')) as $category) {
             $limit = $this->limitModel->get($chatId, $category);
@@ -193,28 +210,23 @@ class ExpenseConfirmation
             }
 
             $spent = $this->expenseModel->getMonthlyTotal($chatId, $category);
-            if ($spent >= $limit) {
-                $warnings[] = "🔴 Превышение «{$category}»: {$this->money($spent)} / {$this->money($limit)}";
-            } elseif ($spent >= $limit * 0.8) {
-                $warnings[] = "🟡 Внимание «{$category}»: {$this->money($spent)} / {$this->money($limit)}";
-            }
+            $marker = Format::marker($spent, $limit);
+
+            $lines[] = "{$marker} «{$category}»: " . $this->money($spent) . ' / ' . $this->money($limit);
         }
 
         if ($globalLimit !== null && $total >= $globalLimit) {
-            $warnings[] = '🔴 Превышение общего лимита';
+            $lines[] = '🔴 Превышение общего лимита';
         } elseif ($globalLimit !== null && $total >= $globalLimit * 0.8) {
-            $warnings[] = '🟡 Общий лимит на исходе';
+            $lines[] = '🟡 Общий лимит на исходе';
         }
 
-        return $warnings;
+        return $lines;
     }
 
-    /**
-     * @param float $value
-     * @return string
-     */
+    /** @param float $value */
     private function money(float $value): string
     {
-        return number_format($value, fmod($value, 1) == 0.0 ? 0 : 2, ',', ' ');
+        return Format::money($value);
     }
 }

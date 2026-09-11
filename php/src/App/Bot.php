@@ -9,9 +9,13 @@ use App\Controllers\Handlers\AppHandler;
 use App\Controllers\Handlers\ExpenseHandler;
 use App\Controllers\Handlers\CategoryHandler;
 use App\Controllers\Handlers\CallbackHandler;
+use App\Controllers\Handlers\StatsHandler;
+use App\Controllers\Handlers\WebHandler;
+use App\Models\User;
 use App\Queue\ExpenseQueue;
 use GuzzleHttp\Client as HttpClient;
 use TelegramBot\Api\Client;
+use TelegramBot\Api\Types\Message;
 use TelegramBot\Api\Types\Update;
 use App\Cfg;
 
@@ -45,7 +49,11 @@ class Bot
         ]);
     }
 
-    public function handleUpdate(Update $update): void
+    /**
+     * @param array|null $raw Сырой апдейт: из типов библиотеки часть полей
+     *                        выпадает, см. {@see Bot::originalDate()}
+     */
+    public function handleUpdate(Update $update, ?array $raw = null): void
     {
         // Обработка callback-запросов от inline кнопок
         if ($update->getCallbackQuery() !== null) {
@@ -58,7 +66,27 @@ class Bot
             return;
         }
 
+        // Апгрейд группы до супергруппы: Telegram выдаёт чату новый id и шлёт
+        // служебное сообщение в оба чата — в старый с migrate_to_chat_id, в
+        // новый с migrate_from_chat_id. Книга трат — это чат, поэтому без
+        // переноса история осталась бы под прежним id. Хватило бы и одного из
+        // двух сообщений, но какое дойдёт первым — не наше дело: перенос
+        // идемпотентен.
+        $migrateFrom = $update->getMessage()->getMigrateFromChatId();
+        $migrateTo = $update->getMessage()->getMigrateToChatId();
+
+        if ($migrateFrom !== null || $migrateTo !== null) {
+            $chatId = $update->getMessage()->getChat()->getId();
+            (new User())->migrate((int)($migrateFrom ?? $chatId), (int)($migrateTo ?? $chatId));
+            return;
+        }
+
         $msgText = trim($update->getMessage()->getText());
+
+        // Кнопка клавиатуры присылает обычный текст. Подменяем его на команду,
+        // и дальше работает тот же роутинг, что и для набранной вручную, —
+        // отдельная ветка на каждую кнопку не нужна.
+        $msgText = StartHandler::CONTROLS[$msgText] ?? $msgText;
 
         // Вызов соответствующего Handler в зависимости от команды
         if (stripos($msgText, '/start') === 0 || stripos($msgText, '/help') === 0) {
@@ -69,6 +97,17 @@ class Bot
         // /dashboard оставлен алиасом — ссылка на него могла остаться у пользователя в истории
         if (stripos($msgText, '/app') === 0 || stripos($msgText, '/dashboard') === 0) {
             (new AppHandler($this->tg))->handle($update);
+            return;
+        }
+
+        // Те же экраны в браузере: Mini App живёт только внутри Telegram.
+        if (stripos($msgText, '/web') === 0) {
+            (new WebHandler($this->tg))->handle($update);
+            return;
+        }
+
+        if (stripos($msgText, '/stats') === 0) {
+            (new StatsHandler($this->tg))->handle($update);
             return;
         }
 
@@ -90,7 +129,26 @@ class Bot
         // По умолчанию — трата. В отличие от команд выше, её разбор ходит в
         // Gemini, поэтому сообщение уезжает в очередь: вебхук должен ответить
         // Telegram сразу, иначе тот присылает апдейт заново.
-        $this->queueExpense($update, $msgText);
+        $this->queueExpense($update, $msgText, $raw);
+    }
+
+    /**
+     * Дата, под которой трата попадёт в учёт.
+     *
+     * У пересланного чека это день покупки, а не день пересылки — иначе
+     * восстановить пропущенное перепиской с ботом невозможно.
+     *
+     * Bot API 7.0 убрал `forward_date` и заменил его на `forward_origin`, а
+     * telegram-bot/api 7.15 знает только старое поле: `getForwardDate()` на
+     * живом Telegram всегда null, и пересланные траты ложились сегодняшним
+     * числом. Новое поле читается из сырого апдейта — `Message` молча
+     * выбрасывает всё, чего нет в его карте полей. Старое оставлено запасным.
+     */
+    private static function originalDate(Message $message, ?array $raw): string
+    {
+        $forwarded = $raw['message']['forward_origin']['date'] ?? $message->getForwardDate();
+
+        return date('Y-m-d H:i:s', $forwarded ?? $message->getDate());
     }
 
     /**
@@ -100,7 +158,7 @@ class Bot
      * RabbitMQ означало бы молча съеденные траты — пользователь отправил
      * сообщение, бот ответил Telegram «200» и забыл про него.
      */
-    private function queueExpense(Update $update, string $text): void
+    private function queueExpense(Update $update, string $text, ?array $raw = null): void
     {
         $message = $update->getMessage();
 
@@ -109,9 +167,7 @@ class Bot
                 'update_id' => $update->getUpdateId(),
                 'chat_id'   => $message->getChat()->getId(),
                 'text'      => $text,
-                // Дата оригинала пересланного сообщения: в учёт должен попасть
-                // день покупки, а не день пересылки чека.
-                'date'      => date('Y-m-d H:i:s', $message->getForwardDate() ?? $message->getDate()),
+                'date'      => self::originalDate($message, $raw),
             ]);
         } catch (\Throwable $e) {
             error_log('Очередь недоступна, обрабатываю синхронно: ' . $e->getMessage());

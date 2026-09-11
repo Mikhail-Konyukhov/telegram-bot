@@ -29,10 +29,15 @@ class LedgerResolver
     private Client $tg;
     private ChatMember $members;
 
-    public function __construct(Client $tg)
+    /**
+     * Кэш членства — необязательный параметр: прод создаёт его сам, тесты
+     * подставляют заглушку, потому что настоящая модель в конструкторе поднимает
+     * соединение с БД.
+     */
+    public function __construct(Client $tg, ?ChatMember $members = null)
     {
         $this->tg = $tg;
-        $this->members = new ChatMember();
+        $this->members = $members ?? new ChatMember();
     }
 
     /**
