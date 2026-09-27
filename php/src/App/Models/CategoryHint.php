@@ -113,7 +113,7 @@ class CategoryHint
     }
 
     /**
-     * Запоминает выбор категории — и для пользователя, и в общий словарь.
+     * Запоминает выбор категории для пользователя, а системную — и в общий словарь.
      *
      * Побеждает последняя запись, а не самая частая: правка пользователя должна
      * действовать сразу, а не после того, как перевесит по числу голосов.
@@ -125,13 +125,20 @@ class CategoryHint
             return;
         }
 
+        // В общий словарь — только системные категории: их видит каждая книга.
+        // Своя категория есть у одной, остальные такую подсказку отбросят
+        // (ExpenseIntakeService::parse), а прежнюю «конфеты → еда» она бы затёрла.
+        $system = $this->db->prepare('SELECT 1 FROM categories WHERE user_id = 0 AND name = ?');
+        $system->execute([$category]);
+        $scopes = $system->fetchColumn() !== false ? [$userId, self::SHARED] : [$userId];
+
         $stmt = $this->db->prepare(
             "INSERT INTO category_hints (user_id, name_norm, category)
              VALUES (:user_id, :name_norm, :category)
              ON DUPLICATE KEY UPDATE category = VALUES(category)"
         );
 
-        foreach ([$userId, self::SHARED] as $scope) {
+        foreach ($scopes as $scope) {
             $stmt->execute([
                 'user_id'   => $scope,
                 'name_norm' => $norm,

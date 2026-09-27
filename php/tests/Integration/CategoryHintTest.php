@@ -148,6 +148,20 @@ class CategoryHintTest extends IntegrationTestCase
     }
 
     /**
+     * Своя категория книги в общий словарь не попадает: у остальных книг её нет,
+     * подсказку они всё равно отбросят, а прежнюю «конфеты → еда» она бы затёрла.
+     */
+    public function testRememberKeepsPersonalCategoryOutOfSharedDictionary(): void
+    {
+        $this->insertHint(CategoryHint::SHARED, 'конфеты', 'еда');
+
+        $this->hints->remember(self::GROUP, 'конфеты', 'вкусняшки');
+
+        $this->assertSame('вкусняшки', $this->hintFor(self::GROUP, 'конфеты'));
+        $this->assertSame('еда', $this->hintFor(CategoryHint::SHARED, 'конфеты'));
+    }
+
+    /**
      * Ключевое ограничение: запоминается ТОЛЬКО строка целиком.
      *
      * Однословные записи приходят исключительно из bin/import-hints.php. Если
